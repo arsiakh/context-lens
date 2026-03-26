@@ -1,0 +1,38 @@
+# --- Secrets & local config (never commit real values) ---
+.env
+.env.*
+!.env.example
+!.env*.example
+*.pem
+*.key
+secrets/
+*.secret
+credentials.json
+*-credentials.json
+google-services.json
+GoogleService-Info.plist
+
+# --- Dependencies & build (if added at repo root later) ---
+node_modules/
+
+# --- Logs & temp ---
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+pnpm-debug.*
+tmp/
+temp/
+*.tmp
+*.temp
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Editors (local/user-specific; keep shared snippets in-repo if you want) ---
+.idea/
+
+# --- Test / coverage ---
+coverage/
+.nyc_output/
