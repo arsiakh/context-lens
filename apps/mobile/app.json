@@ -11,9 +11,11 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "scheme": "contextlens",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.arsiakh.mobile"
+      "bundleIdentifier": "com.arsiakh.contextlens",
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -26,6 +28,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }
