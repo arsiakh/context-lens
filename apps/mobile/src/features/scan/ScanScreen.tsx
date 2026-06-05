@@ -1,82 +1,70 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 import {
   ActivityIndicator,
   Linking,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { CameraView, useCameraPermissions, PermissionStatus } from "expo-camera";
+import {
+  launchCameraAsync,
+  useCameraPermissions,
+  PermissionStatus,
+} from "expo-image-picker";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useScanStore } from "../../stores/scanStore";
+import { extractAndNormalize } from "../../services/ocr";
+
+type ScanNavProp = NativeStackNavigationProp<RootStackParamList, "Scan">;
 
 export default function ScanScreen() {
-  const cameraRef = useRef<CameraView>(null);
+  const navigation = useNavigation<ScanNavProp>();
   const [permission, requestPermission] = useCameraPermissions();
-  const [isCapturing, setIsCapturing] = useState(false);
 
-  const { status, setCaptured, reset } = useScanStore();
+  const { status, normalizedText, ocrError, setCaptured, setExtracting, setExtracted, setOcrError, reset } =
+    useScanStore();
 
-  // Request camera permission on mount (state: not-yet-asked).
-  // useCameraPermissions() returns null while the permission status is loading —
-  // wait for it before rendering any permission-dependent UI.
-  useEffect(() => {
-    if (permission && permission.status === PermissionStatus.UNDETERMINED) {
-      requestPermission();
-    }
-  }, [permission, requestPermission]);
-
-  // Reset scan state when the screen mounts so a fresh preview is always shown.
+  // Reset scan state on mount so a fresh capture flow is always shown.
   useEffect(() => {
     reset();
   }, [reset]);
 
   async function handleCapture() {
-    if (!cameraRef.current || isCapturing) return;
-    setIsCapturing(true);
+    // Ensure camera permission before launching the native camera.
+    if (!permission || permission.status !== PermissionStatus.GRANTED) {
+      const result = await requestPermission();
+      if (result.status !== PermissionStatus.GRANTED) return;
+    }
+
+    // Launch the native iOS camera — full resolution, autofocus, optimized exposure.
+    const result = await launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 1,
+    });
+    if (result.canceled) return;
+
+    const uri = result.assets?.at(0)?.uri;
+    if (!uri) return;
+
+    setCaptured(uri);
+    setExtracting();
     try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
-        skipProcessing: false,
-      });
-      if (photo?.uri) {
-        setCaptured(photo.uri);
-        // TODO (Task 7): pass photo.uri to OCR service here
-        console.log("[ScanScreen] captured:", photo.uri);
-      }
-    } catch (e) {
-      console.warn("[ScanScreen] capture failed:", e);
-    } finally {
-      setIsCapturing(false);
+      const { normalizedText, rawText } = await extractAndNormalize(uri);
+      setExtracted(rawText, normalizedText);
+      console.log("[OCR] ───── RAW TEXT ─────\n" + rawText);
+      console.log("[OCR] ───── NORMALIZED ─────\n" + normalizedText);
+    } catch (e: unknown) {
+      const msg = (e as { message?: string }).message ?? "Text extraction failed.";
+      setOcrError(msg);
     }
   }
 
-  // ── Permission loading ───────────────────────────────────────────────────────
-  if (!permission) {
-    return (
-      <View style={styles.centeredContainer}>
-        <ActivityIndicator size="large" color="#6858e9" />
-      </View>
-    );
-  }
-
-  // ── Permission denied (can still request again) ──────────────────────────────
-  if (permission.status === PermissionStatus.DENIED && permission.canAskAgain) {
-    return (
-      <View style={styles.centeredContainer}>
-        <Text style={styles.permissionTitle}>Camera access needed</Text>
-        <Text style={styles.permissionSubtitle}>
-          Context Lens needs the camera to capture book pages.
-        </Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-          <Text style={styles.permissionButtonText}>Grant Permission</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   // ── Permission permanently denied (must open Settings) ──────────────────────
-  if (permission.status === PermissionStatus.DENIED && !permission.canAskAgain) {
+  if (permission && permission.status === PermissionStatus.DENIED && !permission.canAskAgain) {
     return (
       <View style={styles.centeredContainer}>
         <Text style={styles.permissionTitle}>Camera access blocked</Text>
@@ -93,14 +81,13 @@ export default function ScanScreen() {
     );
   }
 
-  // ── Captured state: show confirmation before OCR runs ───────────────────────
-  if (status === "captured" || status === "extracting") {
+  // ── OCR error state ──────────────────────────────────────────────────────────
+  if (status === "error") {
     return (
       <View style={styles.centeredContainer}>
-        <ActivityIndicator size="large" color="#6858e9" />
-        <Text style={styles.processingText}>
-          {status === "extracting" ? "Extracting text…" : "Photo captured"}
-        </Text>
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{ocrError ?? "Text extraction failed."}</Text>
+        </View>
         <TouchableOpacity style={styles.retakeButton} onPress={reset}>
           <Text style={styles.retakeButtonText}>Retake</Text>
         </TouchableOpacity>
@@ -108,69 +95,94 @@ export default function ScanScreen() {
     );
   }
 
-  // ── Camera preview ───────────────────────────────────────────────────────────
-  return (
-    <View style={styles.container}>
-      <CameraView
-        ref={cameraRef}
-        style={styles.camera}
-        facing="back"
-      />
-
-      {/* Capture button — centred at the bottom */}
-      <View style={styles.controls}>
-        <TouchableOpacity
-          style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]}
-          onPress={handleCapture}
-          disabled={isCapturing}
-          accessibilityLabel="Capture book page"
+  // ── Extracted: show text preview + Retake / Continue ────────────────────────
+  if (status === "extracted" && normalizedText) {
+    return (
+      <View style={styles.extractedContainer}>
+        <Text style={styles.extractedHeading}>Extracted text</Text>
+        <ScrollView
+          style={styles.textScroll}
+          contentContainerStyle={styles.textScrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.captureButtonInner} />
+          <Text style={styles.extractedText}>{normalizedText}</Text>
+        </ScrollView>
+        <View style={styles.extractedActions}>
+          <TouchableOpacity style={styles.retakeButton} onPress={reset}>
+            <Text style={styles.retakeButtonText}>Retake</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={() => navigation.navigate("Reader")}
+          >
+            <Text style={styles.continueButtonText}>Continue →</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Extracting ───────────────────────────────────────────────────────────────
+  if (status === "captured" || status === "extracting") {
+    return (
+      <View style={styles.centeredContainer}>
+        <ActivityIndicator size="large" color="#6858e9" />
+        <Text style={styles.processingText}>
+          {status === "extracting" ? "Extracting text…" : "Processing…"}
+        </Text>
+        <TouchableOpacity style={styles.retakeButton} onPress={reset}>
+          <Text style={styles.retakeButtonText}>Cancel</Text>
         </TouchableOpacity>
       </View>
+    );
+  }
+
+  // ── Idle: prompt to capture ──────────────────────────────────────────────────
+  return (
+    <View style={styles.centeredContainer}>
+      <Text style={styles.title}>Capture a passage</Text>
+      <Text style={styles.subtitle}>
+        Point your camera at a book page and take a clear, well-lit photo.
+      </Text>
+      <TouchableOpacity style={styles.captureButton} onPress={handleCapture}>
+        <Text style={styles.captureButtonText}>Capture Book Page</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  camera: {
-    flex: 1,
-  },
-  controls: {
-    position: "absolute",
-    bottom: 48,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  captureButton: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 4,
-    borderColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  captureButtonDisabled: {
-    opacity: 0.5,
-  },
-  captureButtonInner: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: "#fff",
-  },
   centeredContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 32,
     backgroundColor: "#fff",
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#111",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 36,
+  },
+  captureButton: {
+    backgroundColor: "#6858e9",
+    paddingVertical: 16,
+    paddingHorizontal: 36,
+    borderRadius: 12,
+  },
+  captureButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 17,
   },
   permissionTitle: {
     fontSize: 20,
@@ -214,5 +226,67 @@ const styles = StyleSheet.create({
     color: "#6858e9",
     fontWeight: "600",
     fontSize: 15,
+  },
+  errorBanner: {
+    width: "100%",
+    padding: 14,
+    borderRadius: 8,
+    backgroundColor: "#FFF3E0",
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF9800",
+    marginBottom: 24,
+  },
+  errorText: {
+    fontSize: 14,
+    color: "#E65100",
+    fontWeight: "500",
+  },
+  // ── Extracted state ──────────────────────────────────────────────────────────
+  extractedContainer: {
+    flex: 1,
+    backgroundColor: "#fff",
+    paddingTop: 60,
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+  },
+  extractedHeading: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6858e9",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 12,
+  },
+  textScroll: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: "#F7F6FF",
+    marginBottom: 24,
+  },
+  textScrollContent: {
+    padding: 16,
+  },
+  extractedText: {
+    fontSize: 16,
+    color: "#222",
+    lineHeight: 26,
+  },
+  extractedActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+  continueButton: {
+    flex: 1,
+    backgroundColor: "#6858e9",
+    paddingVertical: 15,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  continueButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
   },
 });

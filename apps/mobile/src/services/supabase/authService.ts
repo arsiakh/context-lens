@@ -1,65 +1,9 @@
-import * as AppleAuthentication from "expo-apple-authentication";
-import * as Crypto from "expo-crypto";
 import { supabase } from "./client";
 
-// ─── Apple Sign-in ────────────────────────────────────────────────────────────
-//
-// Flow:
-//   1. Generate a random nonce (prevents replay attacks).
-//   2. SHA-256 hash it — Apple receives the hash, we keep the raw value.
-//   3. Apple returns an identityToken (JWT) + the nonce it signed.
-//   4. We pass both to Supabase, which verifies the token and creates a session.
-//
-// Why PKCE / nonce matters: without it, an intercepted identityToken could be
-// replayed by an attacker. Supabase validates that the nonce in the token matches
-// what we sent, so intercepted tokens are useless.
-
-function generateNonce(length = 32): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const digest = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    input
-  );
-  return digest;
-}
-
-export async function signInWithApple(): Promise<void> {
-  const rawNonce = generateNonce();
-  const hashedNonce = await sha256Hex(rawNonce);
-
-  // This opens the native Apple Sign-in sheet. Throws AppleAuthenticationError
-  // if the user cancels or if the device doesn't support it.
-  const credential = await AppleAuthentication.signInAsync({
-    requestedScopes: [
-      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-      AppleAuthentication.AppleAuthenticationScope.EMAIL,
-    ],
-    nonce: hashedNonce,
-  });
-
-  const identityToken = credential.identityToken;
-  if (!identityToken) {
-    throw new Error("Apple Sign-in did not return an identity token.");
-  }
-
-  // Exchange with Supabase. On success, supabase.auth session is set automatically
-  // and the authStore listener (onAuthStateChange) fires to update app state.
-  const { error } = await supabase.auth.signInWithIdToken({
-    provider: "apple",
-    token: identityToken,
-    nonce: rawNonce,
-  });
-
-  if (error) throw error;
-}
+// NOTE: Apple Sign-in is deferred until a paid Apple Developer account is available.
+// Free personal teams cannot use the "Sign In with Apple" capability, which blocks
+// device provisioning. The previous signInWithApple() implementation (expo-apple-authentication
+// + expo-crypto nonce flow) can be restored from git history when re-adding it.
 
 // ─── Magic Link (Email) ───────────────────────────────────────────────────────
 //
