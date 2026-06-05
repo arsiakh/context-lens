@@ -1,0 +1,61 @@
+diff --git a/node_modules/expo-text-extractor/ios/ExpoTextExtractorModule.swift b/node_modules/expo-text-extractor/ios/ExpoTextExtractorModule.swift
+index 102a7a0..2c3c16b 100644
+--- a/node_modules/expo-text-extractor/ios/ExpoTextExtractorModule.swift
++++ b/node_modules/expo-text-extractor/ios/ExpoTextExtractorModule.swift
+@@ -1,6 +1,24 @@
+ import ExpoModulesCore
+ import Vision
+ 
++// Convert UIImage.Orientation (EXIF-derived) into the CGImagePropertyOrientation that
++// Vision expects. Without this, portrait photos are processed sideways and accuracy drops.
++extension CGImagePropertyOrientation {
++    init(_ uiOrientation: UIImage.Orientation) {
++        switch uiOrientation {
++        case .up: self = .up
++        case .upMirrored: self = .upMirrored
++        case .down: self = .down
++        case .downMirrored: self = .downMirrored
++        case .left: self = .left
++        case .leftMirrored: self = .leftMirrored
++        case .right: self = .right
++        case .rightMirrored: self = .rightMirrored
++        @unknown default: self = .up
++        }
++    }
++}
++
+ public class ExpoTextExtractorModule: Module {
+     public func definition() -> ModuleDefinition {
+         Name("ExpoTextExtractor")
+@@ -12,12 +30,14 @@ public class ExpoTextExtractorModule: Module {
+         AsyncFunction("extractTextFromImage") { (url: URL, promise: Promise) in
+             do {
+                 let imageData = try Data(contentsOf: url)
+-                let image = UIImage(data: imageData)
+-                guard let cgImage = image?.cgImage else {
++                guard let image = UIImage(data: imageData), let cgImage = image.cgImage else {
+                     throw Exception.init(name: "err", description: "err")
+                 }
+ 
+-                let requestHandler = VNImageRequestHandler(cgImage: cgImage)
++                // Pass the image's real orientation so Vision reads upright text, matching Live Text.
++                let orientation = CGImagePropertyOrientation(image.imageOrientation)
++                let requestHandler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation)
++
+                 let request = VNRecognizeTextRequest { (request, error ) in
+                     guard let observations = request.results as? [VNRecognizedTextObservation] else {
+                         return promise.resolve([])
+@@ -30,6 +50,13 @@ public class ExpoTextExtractorModule: Module {
+                     promise.resolve(recognizedTexts)
+                 }
+ 
++                // Match iOS Live Text quality: most accurate model, language correction on,
++                // English-biased, and the newest Vision revision available on this OS.
++                request.recognitionLevel = .accurate
++                request.usesLanguageCorrection = true
++                request.recognitionLanguages = ["en-US"]
++                request.revision = VNRecognizeTextRequest.currentRevision
++
+                 try requestHandler.perform([request])
+             } catch {
+                 promise.reject(error)

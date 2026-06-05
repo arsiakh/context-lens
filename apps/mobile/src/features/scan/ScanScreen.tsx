@@ -41,9 +41,13 @@ export default function ScanScreen() {
     }
 
     // Launch the native iOS camera — full resolution, autofocus, optimized exposure.
+    // allowsEditing lets the user crop tightly to the text before OCR, which is the single
+    // biggest practical accuracy boost: Vision performs far better when the frame is mostly text.
     const result = await launchCameraAsync({
       mediaTypes: ["images"],
       quality: 1,
+      allowsEditing: true,
+      exif: false,
     });
     if (result.canceled) return;
 
