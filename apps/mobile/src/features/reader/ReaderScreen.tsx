@@ -11,11 +11,7 @@ import {
 import { useEffect, useState } from "react";
 import { useScanStore } from "../../stores/scanStore";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
-
-// NOTE: This is an interim Reader used to iterate on the analysis prompt.
-// It shows the raw analysis output (passage, every annotation with the exact
-// sliced substring so offsets can be verified, plus model meta). The polished
-// inline-highlight rendering, popover, and bottom sheets are Week 4.
+import { renderAnnotatedText, type AnnotatedTextSegment } from "./renderAnnotatedText";
 
 export default function ReaderScreen() {
   const {
@@ -73,6 +69,7 @@ export default function ReaderScreen() {
   const text = analyzeResponse.normalizedText ?? normalizedText ?? "";
   const totalAnnotations = vocab.length + inBookRefs.length + realWorldRefs.length;
   const displayTitle = confirmedBookTitle ?? bookInference.title ?? "Unknown";
+  const segments = renderAnnotatedText(text, vocab, inBookRefs, realWorldRefs);
 
   return (
     <>
@@ -88,7 +85,13 @@ export default function ReaderScreen() {
       {/* Passage */}
       <Text style={styles.sectionLabel}>Passage</Text>
       <View style={styles.passageBox}>
-        <Text style={styles.passageText}>{text}</Text>
+        <Text style={styles.passageText}>
+          {segments.map((segment, index) => (
+            <Text key={`${segment.type}-${index}`} style={segmentStyle(segment)}>
+              {segment.text}
+            </Text>
+          ))}
+        </Text>
       </View>
 
       {totalAnnotations === 0 && (
@@ -106,7 +109,6 @@ export default function ReaderScreen() {
               </Text>
               <Text style={styles.body}>{v.definition}</Text>
               <Text style={styles.example}>“{v.example}”</Text>
-              <OffsetCheck text={text} start={v.start} end={v.end} expected={v.term} />
             </View>
           ))}
         </>
@@ -121,7 +123,6 @@ export default function ReaderScreen() {
               <Text style={styles.term}>{r.label}</Text>
               <Text style={styles.body}>{r.explanation}</Text>
               <Text style={styles.confidenceSmall}>confidence {r.confidence.toFixed(2)}</Text>
-              <OffsetCheck text={text} start={r.start} end={r.end} expected={r.label} />
             </View>
           ))}
         </>
@@ -136,7 +137,6 @@ export default function ReaderScreen() {
               <Text style={styles.term}>{r.label}</Text>
               <Text style={styles.body}>{r.explanation}</Text>
               <Text style={styles.confidenceSmall}>confidence {r.confidence.toFixed(2)}</Text>
-              <OffsetCheck text={text} start={r.start} end={r.end} expected={r.label} />
             </View>
           ))}
         </>
@@ -183,25 +183,17 @@ export default function ReaderScreen() {
   );
 }
 
-// Shows the exact substring at [start, end) so prompt offsets can be verified by eye.
-function OffsetCheck({
-  text,
-  start,
-  end,
-  expected,
-}: {
-  text: string;
-  start: number;
-  end: number;
-  expected: string;
-}) {
-  const slice = text.slice(start, end);
-  const matches = slice.trim().toLowerCase() === expected.trim().toLowerCase();
-  return (
-    <Text style={[styles.offset, matches ? styles.offsetOk : styles.offsetBad]}>
-      [{start}–{end}] “{slice}” {matches ? "✓" : "✗ mismatch"}
-    </Text>
-  );
+function segmentStyle(segment: AnnotatedTextSegment) {
+  switch (segment.type) {
+    case "vocab":
+      return styles.vocabText;
+    case "inBookRef":
+      return styles.inBookText;
+    case "realWorldRef":
+      return styles.realWorldText;
+    default:
+      return undefined;
+  }
 }
 
 const styles = StyleSheet.create({
@@ -222,6 +214,9 @@ const styles = StyleSheet.create({
   confidence: { fontSize: 13, color: "#888", marginTop: 2 },
   passageBox: { backgroundColor: "#F7F6FF", borderRadius: 12, padding: 16 },
   passageText: { fontSize: 16, lineHeight: 26, color: "#222" },
+  vocabText: { backgroundColor: "#FFF9C4" },
+  inBookText: { textDecorationLine: "underline", textDecorationColor: "#5C6BC0" },
+  realWorldText: { fontWeight: "800" },
   empty: { marginTop: 18, fontSize: 15, color: "#888", fontStyle: "italic" },
   card: { borderRadius: 10, padding: 14, marginBottom: 10 },
   vocabCard: { backgroundColor: "#FFF9C4" },
@@ -232,9 +227,6 @@ const styles = StyleSheet.create({
   body: { fontSize: 14, lineHeight: 20, color: "#333" },
   example: { fontSize: 13, color: "#555", fontStyle: "italic", marginTop: 6 },
   confidenceSmall: { fontSize: 12, color: "#888", marginTop: 6 },
-  offset: { fontSize: 11, marginTop: 6, fontFamily: "Courier" },
-  offsetOk: { color: "#2E7D32" },
-  offsetBad: { color: "#C62828" },
   errorBanner: {
     width: "100%",
     padding: 14,

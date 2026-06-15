@@ -7,6 +7,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "test:reader": "tsx src/features/reader/renderAnnotatedText.test.ts",
     "postinstall": "patch-package"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "patch-package": "^8.0.1",
+    "tsx": "^4.22.4",
     "typescript": "~5.9.2"
   },
   "private": true
