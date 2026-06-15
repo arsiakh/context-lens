@@ -12,6 +12,7 @@ type ScanStatus = "idle" | "captured" | "extracting" | "extracted" | "error";
 
 // Where the LLM analysis call is in its lifecycle.
 type AnalyzeStatus = "idle" | "analyzing" | "done" | "error";
+const BOOK_INFERENCE_THRESHOLD = 0.7;
 
 interface AnalyzeErrorState {
   kind: AnalyzeErrorKind;
@@ -30,12 +31,17 @@ interface ScanState {
   analyzeStatus: AnalyzeStatus;
   analyzeResponse: AnalyzeResponse | null;
   analyzeError: AnalyzeErrorState | null;
+  bookTitleHint: string;
+  confirmedBookTitle: string | null;
+  needsBookTitleConfirmation: boolean;
 
   // Actions
   setCaptured: (uri: string) => void;
   setExtracting: () => void;
   setExtracted: (raw: string, normalized: string) => void;
   setOcrError: (message: string) => void;
+  setBookTitleHint: (title: string) => void;
+  confirmBookTitle: (title: string) => void;
   analyze: () => Promise<void>;
   reset: () => void;
 }
@@ -50,22 +56,42 @@ export const useScanStore = create<ScanState>((set, get) => ({
   analyzeStatus: "idle",
   analyzeResponse: null,
   analyzeError: null,
+  bookTitleHint: "",
+  confirmedBookTitle: null,
+  needsBookTitleConfirmation: false,
 
   setCaptured: (uri) => set({ status: "captured", imageUri: uri, ocrError: null }),
   setExtracting: () => set({ status: "extracting" }),
   setExtracted: (raw, normalized) =>
     set({ status: "extracted", rawText: raw, normalizedText: normalized }),
   setOcrError: (message) => set({ status: "error", ocrError: message }),
+  setBookTitleHint: (title) => set({ bookTitleHint: title }),
+  confirmBookTitle: (title) => {
+    const cleaned = title.trim() || "Unknown Book";
+    set({
+      confirmedBookTitle: cleaned,
+      bookTitleHint: cleaned === "Unknown Book" ? "" : cleaned,
+      needsBookTitleConfirmation: false,
+    });
+  },
 
   // Sends the normalized passage to the backend and stores the annotated result.
   // Screens read analyzeStatus/analyzeResponse/analyzeError and render accordingly.
   analyze: async () => {
-    const text = get().normalizedText;
+    const { normalizedText: text, bookTitleHint } = get();
     if (!text) return;
-    set({ analyzeStatus: "analyzing", analyzeError: null });
+    set({ analyzeStatus: "analyzing", analyzeError: null, needsBookTitleConfirmation: false });
     try {
-      const response = await analyzePassage(text);
-      set({ analyzeStatus: "done", analyzeResponse: response });
+      const cleanedHint = bookTitleHint.trim();
+      const response = await analyzePassage(text, cleanedHint);
+      const inferredTitle = response.bookInference.title?.trim() || null;
+      const highConfidence = response.bookInference.confidence >= BOOK_INFERENCE_THRESHOLD;
+      set({
+        analyzeStatus: "done",
+        analyzeResponse: response,
+        confirmedBookTitle: cleanedHint || (highConfidence ? inferredTitle : null),
+        needsBookTitleConfirmation: !cleanedHint && !highConfidence,
+      });
     } catch (e) {
       const err: AnalyzeErrorState =
         e instanceof AnalyzeError
@@ -85,5 +111,8 @@ export const useScanStore = create<ScanState>((set, get) => ({
       analyzeStatus: "idle",
       analyzeResponse: null,
       analyzeError: null,
+      bookTitleHint: "",
+      confirmedBookTitle: null,
+      needsBookTitleConfirmation: false,
     }),
 }));

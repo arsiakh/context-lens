@@ -28,7 +28,7 @@ export class AnalyzeError extends Error {
   }
 }
 
-export async function analyzePassage(text: string): Promise<AnalyzeResponse> {
+export async function analyzePassage(text: string, bookTitleHint?: string | null): Promise<AnalyzeResponse> {
   if (!API_URL) {
     throw new AnalyzeError("server", "API URL is not configured. Set EXPO_PUBLIC_API_URL.");
   }
@@ -48,7 +48,10 @@ export async function analyzePassage(text: string): Promise<AnalyzeResponse> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({
+        text,
+        hint: { bookTitle: bookTitleHint?.trim() || null },
+      }),
     });
   } catch {
     throw new AnalyzeError("network", "Couldn't reach the server. Check your connection and try again.");

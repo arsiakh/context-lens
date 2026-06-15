@@ -1,8 +1,13 @@
 export const MIN_TEXT_CHARS = 20;
 export const MAX_TEXT_CHARS = 2000;
+const MAX_TITLE_CHARS = 120;
+
+export interface AnalyzeRequestHint {
+  bookTitle: string | null;
+}
 
 export type AnalyzeInputValidation =
-  | { ok: true; text: string }
+  | { ok: true; text: string; hint: AnalyzeRequestHint }
   | { ok: false; status: 400; body: { error: string; code: "INVALID_INPUT"; maxChars?: number } };
 
 export function validateAnalyzeInput(body: unknown): AnalyzeInputValidation {
@@ -34,5 +39,24 @@ export function validateAnalyzeInput(body: unknown): AnalyzeInputValidation {
     };
   }
 
-  return { ok: true, text };
+  return { ok: true, text, hint: parseHint(body) };
+}
+
+function parseHint(body: unknown): AnalyzeRequestHint {
+  if (body === null || typeof body !== "object" || !("hint" in body)) {
+    return { bookTitle: null };
+  }
+
+  const hint = body.hint;
+  if (hint === null || typeof hint !== "object" || !("bookTitle" in hint)) {
+    return { bookTitle: null };
+  }
+
+  const rawTitle = hint.bookTitle;
+  if (typeof rawTitle !== "string") {
+    return { bookTitle: null };
+  }
+
+  const bookTitle = rawTitle.trim().slice(0, MAX_TITLE_CHARS);
+  return { bookTitle: bookTitle.length > 0 ? bookTitle : null };
 }
