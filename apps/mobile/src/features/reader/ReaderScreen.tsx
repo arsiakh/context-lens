@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Pressable,
   Modal,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,11 @@ import { useScanStore } from "../../stores/scanStore";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
 import { renderAnnotatedText, type AnnotatedTextSegment } from "./renderAnnotatedText";
 
+type ReferenceSelection =
+  | { type: "inBookRef"; item: InBookRef }
+  | { type: "realWorldRef"; item: RealWorldRef }
+  | null;
+
 export default function ReaderScreen() {
   const {
     analyzeStatus,
@@ -25,6 +31,8 @@ export default function ReaderScreen() {
     analyze,
   } = useScanStore();
   const [titleDraft, setTitleDraft] = useState("");
+  const [selectedVocab, setSelectedVocab] = useState<VocabItem | null>(null);
+  const [selectedReference, setSelectedReference] = useState<ReferenceSelection>(null);
 
   useEffect(() => {
     if (needsBookTitleConfirmation) {
@@ -87,7 +95,28 @@ export default function ReaderScreen() {
       <View style={styles.passageBox}>
         <Text style={styles.passageText}>
           {segments.map((segment, index) => (
-            <Text key={`${segment.type}-${index}`} style={segmentStyle(segment)}>
+            <Text
+              key={`${segment.type}-${index}`}
+              style={segmentStyle(segment)}
+              suppressHighlighting={segment.type !== "plain"}
+              onLongPress={() => {
+                const vocabItem = segment.type === "vocab" && segment.annotationIndex !== null
+                  ? vocab[segment.annotationIndex]
+                  : null;
+                if (vocabItem) setSelectedVocab(vocabItem);
+              }}
+              onPress={() => {
+                if (segment.annotationIndex === null) return;
+                if (segment.type === "inBookRef") {
+                  const item = inBookRefs[segment.annotationIndex];
+                  if (item) setSelectedReference({ type: "inBookRef", item });
+                }
+                if (segment.type === "realWorldRef") {
+                  const item = realWorldRefs[segment.annotationIndex];
+                  if (item) setSelectedReference({ type: "realWorldRef", item });
+                }
+              }}
+            >
               {segment.text}
             </Text>
           ))}
@@ -179,6 +208,8 @@ export default function ReaderScreen() {
         </View>
       </View>
     </Modal>
+    <VocabPopover item={selectedVocab} onDismiss={() => setSelectedVocab(null)} />
+    <ReferenceSheet selection={selectedReference} onDismiss={() => setSelectedReference(null)} />
     </>
   );
 }
@@ -194,6 +225,69 @@ function segmentStyle(segment: AnnotatedTextSegment) {
     default:
       return undefined;
   }
+}
+
+function VocabPopover({
+  item,
+  onDismiss,
+}: {
+  item: VocabItem | null;
+  onDismiss: () => void;
+}) {
+  return (
+    <Modal transparent visible={item !== null} animationType="fade" onRequestClose={onDismiss}>
+      <Pressable style={styles.popoverBackdrop} onPress={onDismiss}>
+        <Pressable style={styles.dictionaryCard}>
+          <View style={styles.popoverPointer} />
+          <Text style={styles.dictionaryTitle}>Dictionary</Text>
+          <View style={styles.dictionaryRule} />
+          {item && (
+            <>
+              <Text style={styles.dictionaryTerm}>
+                {item.term} <Text style={styles.dictionaryPos}>{item.pos}</Text>
+              </Text>
+              <Text style={styles.dictionaryDefinition}>{item.definition}</Text>
+              <Text style={styles.dictionaryExample}>{item.example}</Text>
+            </>
+          )}
+          <View style={styles.dictionaryDivider} />
+          <Text style={styles.dictionaryAction}>Definition from Context Lens</Text>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function ReferenceSheet({
+  selection,
+  onDismiss,
+}: {
+  selection: ReferenceSelection;
+  onDismiss: () => void;
+}) {
+  const item = selection?.item ?? null;
+  const title = selection?.type === "realWorldRef" ? "Real-world reference" : "In-book reference";
+
+  return (
+    <Modal transparent visible={selection !== null} animationType="slide" onRequestClose={onDismiss}>
+      <Pressable style={styles.sheetBackdrop} onPress={onDismiss}>
+        <Pressable style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>{title}</Text>
+          {item && (
+            <>
+              <Text style={styles.sheetLabel}>{item.label}</Text>
+              <Text style={styles.sheetBody}>{item.explanation}</Text>
+              <Text style={styles.sheetConfidence}>confidence {item.confidence.toFixed(2)}</Text>
+            </>
+          )}
+          <TouchableOpacity style={styles.sheetButton} onPress={onDismiss}>
+            <Text style={styles.sheetButtonText}>Close</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -293,6 +387,143 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   modalPrimaryText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  popoverBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.42)",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  dictionaryCard: {
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 390,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(0, 0, 0, 0.18)",
+    paddingTop: 16,
+    paddingHorizontal: 22,
+    paddingBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  popoverPointer: {
+    position: "absolute",
+    top: -8,
+    alignSelf: "center",
+    width: 18,
+    height: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+    transform: [{ rotate: "45deg" }],
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(0, 0, 0, 0.14)",
+  },
+  dictionaryTitle: {
+    fontSize: 20,
+    fontWeight: "400",
+    color: "#444",
+  },
+  dictionaryRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#d8d8d8",
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  dictionaryTerm: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#111",
+    marginBottom: 4,
+  },
+  dictionaryPos: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#888",
+  },
+  dictionaryDefinition: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: "#111",
+  },
+  dictionaryExample: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#666",
+    fontStyle: "italic",
+  },
+  dictionaryDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#ddd",
+    marginVertical: 12,
+  },
+  dictionaryAction: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#555",
+  },
+  sheetBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.28)",
+  },
+  sheet: {
+    minHeight: "42%",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    backgroundColor: "#fff",
+    paddingHorizontal: 22,
+    paddingTop: 10,
+    paddingBottom: 34,
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 42,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: "#d4d4d4",
+    marginBottom: 18,
+  },
+  sheetTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    color: "#6858e9",
+    marginBottom: 8,
+  },
+  sheetLabel: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#111",
+    marginBottom: 10,
+  },
+  sheetBody: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: "#333",
+  },
+  sheetConfidence: {
+    marginTop: 12,
+    fontSize: 12,
+    color: "#888",
+  },
+  sheetButton: {
+    marginTop: 22,
+    alignSelf: "flex-start",
+    backgroundColor: "#6858e9",
+    borderRadius: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+  },
+  sheetButtonText: {
     color: "#fff",
     fontWeight: "700",
   },
