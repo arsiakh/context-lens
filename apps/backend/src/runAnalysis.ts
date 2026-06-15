@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { analyzeResponseSchema, type AnalyzeResponse } from "./types/analyzeSchema";
 import { SYSTEM_PROMPT, REPAIR_PROMPT } from "./prompts";
 import { validateRanges } from "./validateRanges";
+import type { AnalyzeRequestHint } from "./validateAnalyzeInput";
 
 // Orchestrates the LLM call with the 3-step fallback sequence from the Tech Spec:
 //   1. gpt-4o-mini with the main prompt
@@ -72,13 +73,31 @@ export interface AnalysisResult {
   fallbackEvents: { step: string; reason: string }[];
 }
 
-export async function runAnalysis(passage: string): Promise<AnalysisResult> {
+function buildAnalysisUserContent(passage: string, hint: AnalyzeRequestHint): string {
+  if (!hint.bookTitle && !hint.author) return passage;
+
+  const hintLines = [
+    "BOOK CONTEXT HINTS:",
+    `Title: ${hint.bookTitle ?? "unknown"}`,
+    `Author: ${hint.author ?? "unknown"}`,
+  ].join("\n");
+
+  return `${hintLines}
+
+Use the title and/or author above as context for in-book references and real-world references when helpful, but do not invent plot details that are not supported by the photographed passage. Still return bookInference.title as the title only, without the author.
+
+PASSAGE:
+${passage}`;
+}
+
+export async function runAnalysis(passage: string, hint: AnalyzeRequestHint = { bookTitle: null, author: null }): Promise<AnalysisResult> {
   const startedAt = Date.now();
   const fallbackEvents: { step: string; reason: string }[] = [];
   const attempts: Attempt[] = [];
+  const userContent = buildAnalysisUserContent(passage, hint);
 
   // ── Attempt 1: gpt-4o-mini + main prompt ─────────────────────────────────────
-  const first = await callModel("gpt-4o-mini", SYSTEM_PROMPT, passage);
+  const first = await callModel("gpt-4o-mini", SYSTEM_PROMPT, userContent);
   const firstParsed = tryParse(first.raw);
   attempts.push({ label: "mini", model: "gpt-4o-mini", ...firstParsed });
 
@@ -89,7 +108,7 @@ export async function runAnalysis(passage: string): Promise<AnalysisResult> {
   // ── Attempt 2: gpt-4o-mini + repair prompt ───────────────────────────────────
   if (!finalParsed) {
     fallbackEvents.push({ step: "repair", reason: firstParsed.error ?? "unknown" });
-    const repairUser = `PASSAGE:\n${passage}\n\nINVALID RESPONSE:\n${first.raw}\n\nVALIDATION ERROR:\n${firstParsed.error}`;
+    const repairUser = `PASSAGE:\n${passage}\n\nBOOK TITLE HINT:\n${hint.bookTitle ?? "null"}\n\nAUTHOR HINT:\n${hint.author ?? "null"}\n\nINVALID RESPONSE:\n${first.raw}\n\nVALIDATION ERROR:\n${firstParsed.error}`;
     const repair = await callModel("gpt-4o-mini", REPAIR_PROMPT, repairUser);
     const repairParsed = tryParse(repair.raw);
     attempts.push({ label: "repair", model: "gpt-4o-mini", ...repairParsed });
@@ -103,7 +122,7 @@ export async function runAnalysis(passage: string): Promise<AnalysisResult> {
   if (!finalParsed) {
     const prev = attempts[attempts.length - 1];
     fallbackEvents.push({ step: "gpt-4o", reason: prev.error ?? "unknown" });
-    const full = await callModel("gpt-4o", SYSTEM_PROMPT, passage);
+    const full = await callModel("gpt-4o", SYSTEM_PROMPT, userContent);
     const fullParsed = tryParse(full.raw);
     attempts.push({ label: "gpt-4o", model: "gpt-4o", ...fullParsed });
     if (fullParsed.parsed) {

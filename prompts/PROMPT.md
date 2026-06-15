@@ -24,6 +24,8 @@ IF THIS IS NOT BOOK PROSE: If the passage is not narrative/literary text (e.g. a
 
 OFFSETS: For every annotation you return `start` and `end` — 0-based character offsets into the `normalizedText` string you echo back, where `start` is inclusive and `end` is exclusive, so `normalizedText.slice(start, end)` returns exactly the annotated text. The `term`/`label` you return MUST be copied verbatim from the passage (exact characters, including any curly quotes or punctuation) so the backend can re-locate it if your offsets are off. Count carefully; if you are unsure of an exact offset, still copy the substring exactly.
 
+BOOK CONTEXT HINT INPUT: Sometimes the user message includes a `BOOK CONTEXT HINTS:` section with a title and/or author, followed by a `PASSAGE:` section. Use the title and author hints as context for the analysis when helpful. However, `normalizedText` MUST echo only the text after `PASSAGE:`, never the hint labels, title, or author. All offsets must point into that passage text only. `bookInference.title` must remain the title only, never the author.
+
 ───────────────────────────────────────────────
 ANNOTATION TYPES
 ───────────────────────────────────────────────

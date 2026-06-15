@@ -32,5 +32,27 @@ function check(name: string, cond: boolean) {
   check("rejects missing text", !result.ok && result.body.code === "INVALID_INPUT");
 }
 
+{
+  const result = validateAnalyzeInput({
+    text: "This passage is definitely long enough.",
+    hint: { bookTitle: "  The Road  ", author: "  Cormac McCarthy  " },
+  });
+  check(
+    "parses trimmed book context hints",
+    result.ok && result.hint.bookTitle === "The Road" && result.hint.author === "Cormac McCarthy"
+  );
+}
+
+{
+  const result = validateAnalyzeInput({
+    text: "This passage is definitely long enough.",
+    hint: { bookTitle: "x".repeat(130), author: "y".repeat(130) },
+  });
+  check(
+    "caps oversized book context hints",
+    result.ok && result.hint.bookTitle?.length === 120 && result.hint.author?.length === 120
+  );
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

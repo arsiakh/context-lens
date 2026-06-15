@@ -56,7 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // 4. Analysis with model fallback.
   try {
-    const { response, fallbackEvents } = await runAnalysis(input.text);
+    const { response, fallbackEvents } = await runAnalysis(input.text, input.hint);
     console.log(
       JSON.stringify({
         event: "analyze_success",

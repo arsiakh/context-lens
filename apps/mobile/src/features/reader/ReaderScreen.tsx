@@ -1,11 +1,14 @@
 import {
   ActivityIndicator,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useEffect, useState } from "react";
 import { useScanStore } from "../../stores/scanStore";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
 
@@ -15,7 +18,23 @@ import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
 // inline-highlight rendering, popover, and bottom sheets are Week 4.
 
 export default function ReaderScreen() {
-  const { analyzeStatus, analyzeResponse, analyzeError, normalizedText, analyze } = useScanStore();
+  const {
+    analyzeStatus,
+    analyzeResponse,
+    analyzeError,
+    normalizedText,
+    confirmedBookTitle,
+    needsBookTitleConfirmation,
+    confirmBookTitle,
+    analyze,
+  } = useScanStore();
+  const [titleDraft, setTitleDraft] = useState("");
+
+  useEffect(() => {
+    if (needsBookTitleConfirmation) {
+      setTitleDraft(analyzeResponse?.bookInference.title ?? "");
+    }
+  }, [analyzeResponse?.bookInference.title, needsBookTitleConfirmation]);
 
   if (analyzeStatus === "analyzing") {
     return (
@@ -53,15 +72,17 @@ export default function ReaderScreen() {
   const { bookInference, vocab, inBookRefs, realWorldRefs, meta } = analyzeResponse;
   const text = analyzeResponse.normalizedText ?? normalizedText ?? "";
   const totalAnnotations = vocab.length + inBookRefs.length + realWorldRefs.length;
+  const displayTitle = confirmedBookTitle ?? bookInference.title ?? "Unknown";
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Book inference */}
       <Text style={styles.sectionLabel}>Book</Text>
-      <Text style={styles.bookTitle}>{bookInference.title ?? "Unknown"}</Text>
+      <Text style={styles.bookTitle}>{displayTitle}</Text>
       <Text style={styles.confidence}>
         confidence {bookInference.confidence.toFixed(2)}
-        {bookInference.confidence < 0.7 ? "  · would prompt for manual entry" : ""}
+        {confirmedBookTitle ? "  · confirmed" : ""}
       </Text>
 
       {/* Passage */}
@@ -127,6 +148,38 @@ export default function ReaderScreen() {
         model: {meta.model} · {meta.latencyMs}ms · fallback: {meta.fallbackUsed ? "yes" : "no"}
       </Text>
     </ScrollView>
+    <Modal transparent visible={needsBookTitleConfirmation} animationType="fade">
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Which book is this from?</Text>
+          <TextInput
+            style={styles.modalInput}
+            placeholder="Book title"
+            placeholderTextColor="#999"
+            value={titleDraft}
+            onChangeText={setTitleDraft}
+            autoCapitalize="words"
+            autoCorrect={false}
+            returnKeyType="done"
+          />
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.modalSecondaryButton}
+              onPress={() => confirmBookTitle("")}
+            >
+              <Text style={styles.modalSecondaryText}>Skip</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalPrimaryButton}
+              onPress={() => confirmBookTitle(titleDraft)}
+            >
+              <Text style={styles.modalPrimaryText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -201,4 +254,54 @@ const styles = StyleSheet.create({
   },
   retryText: { color: "#fff", fontWeight: "600", fontSize: 15 },
   meta: { fontSize: 12, color: "#999", fontFamily: "Courier" },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 19,
+    fontWeight: "700",
+    color: "#111",
+    marginBottom: 14,
+  },
+  modalInput: {
+    borderWidth: 1.5,
+    borderColor: "#dedbf9",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#222",
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 18,
+  },
+  modalSecondaryButton: {
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+  },
+  modalSecondaryText: {
+    color: "#6858e9",
+    fontWeight: "600",
+  },
+  modalPrimaryButton: {
+    backgroundColor: "#6858e9",
+    borderRadius: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+  },
+  modalPrimaryText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
 });

@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -25,8 +26,21 @@ export default function ScanScreen() {
   const navigation = useNavigation<ScanNavProp>();
   const [permission, requestPermission] = useCameraPermissions();
 
-  const { status, normalizedText, ocrError, setCaptured, setExtracting, setExtracted, setOcrError, analyze, reset } =
-    useScanStore();
+  const {
+    status,
+    normalizedText,
+    ocrError,
+    bookTitleHint,
+    authorHint,
+    setCaptured,
+    setExtracting,
+    setExtracted,
+    setOcrError,
+    setBookTitleHint,
+    setAuthorHint,
+    analyze,
+    reset,
+  } = useScanStore();
 
   // Reset scan state on mount so a fresh capture flow is always shown.
   useEffect(() => {
@@ -111,6 +125,28 @@ export default function ScanScreen() {
         >
           <Text style={styles.extractedText}>{normalizedText}</Text>
         </ScrollView>
+        <Text style={styles.inputLabel}>Book title</Text>
+        <TextInput
+          style={styles.titleInput}
+          placeholder="Optional, helps improve context"
+          placeholderTextColor="#999"
+          value={bookTitleHint}
+          onChangeText={setBookTitleHint}
+          autoCapitalize="words"
+          autoCorrect={false}
+          returnKeyType="done"
+        />
+        <Text style={styles.inputLabel}>Author</Text>
+        <TextInput
+          style={styles.authorInput}
+          placeholder="Optional"
+          placeholderTextColor="#999"
+          value={authorHint}
+          onChangeText={setAuthorHint}
+          autoCapitalize="words"
+          autoCorrect={false}
+          returnKeyType="done"
+        />
         <View style={styles.extractedActions}>
           <TouchableOpacity style={styles.retakeButton} onPress={reset}>
             <Text style={styles.retakeButtonText}>Retake</Text>
@@ -270,7 +306,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     backgroundColor: "#F7F6FF",
-    marginBottom: 24,
+    marginBottom: 14,
   },
   textScrollContent: {
     padding: 16,
@@ -279,6 +315,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#222",
     lineHeight: 26,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6858e9",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 8,
+  },
+  titleInput: {
+    borderWidth: 1.5,
+    borderColor: "#dedbf9",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#222",
+    marginBottom: 12,
+  },
+  authorInput: {
+    borderWidth: 1.5,
+    borderColor: "#dedbf9",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#222",
+    marginBottom: 18,
   },
   extractedActions: {
     flexDirection: "row",
