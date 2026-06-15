@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Dimensions,
   Pressable,
   Modal,
   ScrollView,
@@ -9,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import type { GestureResponderEvent } from "react-native";
 import { useEffect, useState } from "react";
 import { useScanStore } from "../../stores/scanStore";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
@@ -18,6 +20,12 @@ type ReferenceSelection =
   | { type: "inBookRef"; item: InBookRef }
   | { type: "realWorldRef"; item: RealWorldRef }
   | null;
+
+type VocabSelection = {
+  item: VocabItem;
+  anchorX: number;
+  anchorY: number;
+} | null;
 
 export default function ReaderScreen() {
   const {
@@ -31,7 +39,7 @@ export default function ReaderScreen() {
     analyze,
   } = useScanStore();
   const [titleDraft, setTitleDraft] = useState("");
-  const [selectedVocab, setSelectedVocab] = useState<VocabItem | null>(null);
+  const [selectedVocab, setSelectedVocab] = useState<VocabSelection>(null);
   const [selectedReference, setSelectedReference] = useState<ReferenceSelection>(null);
 
   useEffect(() => {
@@ -99,14 +107,12 @@ export default function ReaderScreen() {
               key={`${segment.type}-${index}`}
               style={segmentStyle(segment)}
               suppressHighlighting={segment.type !== "plain"}
-              onLongPress={() => {
-                const vocabItem = segment.type === "vocab" && segment.annotationIndex !== null
-                  ? vocab[segment.annotationIndex]
-                  : null;
-                if (vocabItem) setSelectedVocab(vocabItem);
-              }}
-              onPress={() => {
+              onPress={(event) => {
                 if (segment.annotationIndex === null) return;
+                if (segment.type === "vocab") {
+                  const item = vocab[segment.annotationIndex];
+                  if (item) setSelectedVocab(toVocabSelection(item, event));
+                }
                 if (segment.type === "inBookRef") {
                   const item = inBookRefs[segment.annotationIndex];
                   if (item) setSelectedReference({ type: "inBookRef", item });
@@ -208,10 +214,18 @@ export default function ReaderScreen() {
         </View>
       </View>
     </Modal>
-    <VocabPopover item={selectedVocab} onDismiss={() => setSelectedVocab(null)} />
+    <VocabPopover selection={selectedVocab} onDismiss={() => setSelectedVocab(null)} />
     <ReferenceSheet selection={selectedReference} onDismiss={() => setSelectedReference(null)} />
     </>
   );
+}
+
+function toVocabSelection(item: VocabItem, event: GestureResponderEvent): VocabSelection {
+  return {
+    item,
+    anchorX: event.nativeEvent.pageX,
+    anchorY: event.nativeEvent.pageY,
+  };
 }
 
 function segmentStyle(segment: AnnotatedTextSegment) {
@@ -228,17 +242,34 @@ function segmentStyle(segment: AnnotatedTextSegment) {
 }
 
 function VocabPopover({
-  item,
+  selection,
   onDismiss,
 }: {
-  item: VocabItem | null;
+  selection: VocabSelection;
   onDismiss: () => void;
 }) {
+  const item = selection?.item ?? null;
+  const layout = selection ? getPopoverLayout(selection.anchorX, selection.anchorY) : null;
+
   return (
-    <Modal transparent visible={item !== null} animationType="fade" onRequestClose={onDismiss}>
+    <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
       <Pressable style={styles.popoverBackdrop} onPress={onDismiss}>
-        <Pressable style={styles.dictionaryCard}>
-          <View style={styles.popoverPointer} />
+        <Pressable style={[
+          styles.dictionaryCard,
+          layout && { width: layout.width, left: layout.left, top: layout.top },
+        ]}>
+          {layout && (
+            <View
+              style={[
+                styles.popoverPointer,
+                {
+                  left: layout.pointerLeft,
+                  top: layout.isBelow ? -8 : undefined,
+                  bottom: layout.isBelow ? undefined : -8,
+                },
+              ]}
+            />
+          )}
           <Text style={styles.dictionaryTitle}>Dictionary</Text>
           <View style={styles.dictionaryRule} />
           {item && (
@@ -258,6 +289,26 @@ function VocabPopover({
   );
 }
 
+function getPopoverLayout(anchorX: number, anchorY: number) {
+  const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+  const margin = 14;
+  const cardWidth = Math.min(390, screenWidth - margin * 2);
+  const estimatedCardHeight = 230;
+  const canFitBelow = anchorY + estimatedCardHeight + 18 < screenHeight - margin;
+  const isBelow = canFitBelow || anchorY < estimatedCardHeight + margin;
+  const left = clamp(anchorX - cardWidth / 2, margin, screenWidth - cardWidth - margin);
+  const top = isBelow
+    ? clamp(anchorY + 16, margin, screenHeight - estimatedCardHeight - margin)
+    : clamp(anchorY - estimatedCardHeight - 16, margin, screenHeight - estimatedCardHeight - margin);
+  const pointerLeft = clamp(anchorX - left - 9, 18, cardWidth - 36);
+
+  return { width: cardWidth, left, top, pointerLeft, isBelow };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max));
+}
+
 function ReferenceSheet({
   selection,
   onDismiss,
@@ -269,7 +320,7 @@ function ReferenceSheet({
   const title = selection?.type === "realWorldRef" ? "Real-world reference" : "In-book reference";
 
   return (
-    <Modal transparent visible={selection !== null} animationType="slide" onRequestClose={onDismiss}>
+    <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
       <Pressable style={styles.sheetBackdrop} onPress={onDismiss}>
         <Pressable style={styles.sheet}>
           <View style={styles.sheetHandle} />
@@ -393,13 +444,9 @@ const styles = StyleSheet.create({
   popoverBackdrop: {
     flex: 1,
     backgroundColor: "rgba(255, 255, 255, 0.42)",
-    justifyContent: "center",
-    paddingHorizontal: 14,
   },
   dictionaryCard: {
-    alignSelf: "center",
-    width: "100%",
-    maxWidth: 390,
+    position: "absolute",
     borderRadius: 18,
     backgroundColor: "rgba(255, 255, 255, 0.96)",
     borderWidth: StyleSheet.hairlineWidth,
@@ -415,8 +462,6 @@ const styles = StyleSheet.create({
   },
   popoverPointer: {
     position: "absolute",
-    top: -8,
-    alignSelf: "center",
     width: 18,
     height: 18,
     backgroundColor: "rgba(255, 255, 255, 0.96)",
@@ -472,7 +517,7 @@ const styles = StyleSheet.create({
   sheetBackdrop: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.28)",
+    backgroundColor: "rgba(0, 0, 0, 0.16)",
   },
   sheet: {
     minHeight: "42%",
@@ -482,6 +527,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 10,
     paddingBottom: 34,
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 12,
   },
   sheetHandle: {
     alignSelf: "center",
