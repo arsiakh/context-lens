@@ -25,7 +25,7 @@ export default function ScanScreen() {
   const navigation = useNavigation<ScanNavProp>();
   const [permission, requestPermission] = useCameraPermissions();
 
-  const { status, normalizedText, ocrError, setCaptured, setExtracting, setExtracted, setOcrError, reset } =
+  const { status, normalizedText, ocrError, setCaptured, setExtracting, setExtracted, setOcrError, analyze, reset } =
     useScanStore();
 
   // Reset scan state on mount so a fresh capture flow is always shown.
@@ -117,9 +117,14 @@ export default function ScanScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.continueButton}
-            onPress={() => navigation.navigate("Reader")}
+            onPress={() => {
+              // Kick off analysis and move to the Reader, which renders the
+              // loading / result / error states from the store.
+              void analyze();
+              navigation.navigate("Reader");
+            }}
           >
-            <Text style={styles.continueButtonText}>Continue →</Text>
+            <Text style={styles.continueButtonText}>Analyze →</Text>
           </TouchableOpacity>
         </View>
       </View>

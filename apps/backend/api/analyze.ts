@@ -1,70 +1,84 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { requireUser, AuthError } from "../src/auth";
+import { runAnalysis, ModelFailureError } from "../src/runAnalysis";
+import { limitAnalyzeRequest, RateLimitConfigError } from "../src/rateLimit";
+import { validateAnalyzeInput } from "../src/validateAnalyzeInput";
 
-// Vercel Node.js functions use Express-style (req, res) — NOT Web API (Request) => Response.
-// Web API style only works in Edge Runtime or Next.js.
-// 'async' is here for when we add the real OpenAI await call in Week 3.
+// POST /api/analyze
+// Body: { text: string }  — the normalized passage extracted on-device by OCR.
+// Auth: Authorization: Bearer <supabase access token>
+//
+// Flow: method guard → JWT auth (401) → input validation → LLM analysis with
+// fallback → 200 with cleaned AnalyzeResponse. Errors map to specific codes so
+// the client can show actionable messages (never a generic "something went wrong").
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-
-  // Guard clause: only accept POST requests.
-  // If someone hits this with GET (e.g. typing the URL in a browser), return 405 immediately.
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: "Method not allowed", code: "METHOD_NOT_ALLOWED" });
   }
 
-  // Hardcoded fake response matching the AnalyzeResponse shape from src/types/index.ts.
-  // This lets the mobile app talk to a real endpoint before the LLM is connected (Week 3).
-  // Uses A Tale of Two Cities so the data is meaningful and testable.
-  const stub = {
-    // The passage the client renders highlights against.
-    // Character offsets in vocab/inBookRefs/realWorldRefs are relative to THIS string.
-    normalizedText:
-      "It was the best of times, it was the worst of times, it was the age of wisdom.",
+  // 1. Authentication — reject before doing any work (never process an anonymous request).
+  let userId: string;
+  try {
+    const user = await requireUser(req);
+    userId = user.id;
+  } catch (e) {
+    if (e instanceof AuthError) {
+      return res.status(401).json({ error: e.message, code: "UNAUTHORIZED" });
+    }
+    console.error("[analyze] auth misconfiguration:", e);
+    return res.status(500).json({ error: "Server auth configuration error.", code: "SERVER_ERROR" });
+  }
 
-    // The guessed book title and confidence score (0.0–1.0).
-    // If confidence < 0.70, the mobile app will show the manual entry modal.
-    bookInference: {
-      title: "A Tale of Two Cities",
-      confidence: 0.95,
-    },
+  // 2. Input validation.
+  const input = validateAnalyzeInput(req.body);
+  if (!input.ok) {
+    return res.status(input.status).json(input.body);
+  }
 
-    // Words to highlight yellow. start/end are 0-based character offsets into normalizedText.
-    // start: 56, end: 63 → characters 56–63 in normalizedText spell "wisdom".
-    vocab: [
-      {
-        start: 56,
-        end: 63,
-        term: "wisdom",
-        pos: "noun",
-        definition: "The quality of having experience, knowledge, and good judgement.",
-        example: "She spoke with great wisdom about the challenges ahead.",
-      },
-    ],
+  // 3. Rate limiting — protect the OpenAI budget before any model call.
+  try {
+    const rateLimit = await limitAnalyzeRequest(userId);
+    if (!rateLimit.success) {
+      return res.status(429).json({
+        error: "Rate limit exceeded. Please try again later.",
+        code: "RATE_LIMITED",
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      });
+    }
+  } catch (e) {
+    if (e instanceof RateLimitConfigError) {
+      console.error("[analyze] rate limit misconfiguration:", e.message);
+      return res.status(500).json({ error: "Server rate limit configuration error.", code: "SERVER_ERROR" });
+    }
+    console.error("[analyze] rate limit check failed:", e);
+    return res.status(500).json({ error: "Analysis failed. Please try again.", code: "SERVER_ERROR" });
+  }
 
-    // No in-book references in this stub (empty array is valid).
-    inBookRefs: [],
-
-    // Real-world references — rendered as bold text.
-    // Tapping opens a bottom sheet with the label + historical explanation.
-    realWorldRefs: [
-      {
-        start: 3,
-        end: 25,
-        label: "best of times / worst of times",
-        explanation:
-          "An allusion to the French Revolution era (1789–1799), a period of radical political change in France.",
-        confidence: 0.88,
-      },
-    ],
-
-    // Metadata about the LLM call — model used, latency, whether GPT-4o fallback fired.
-    // latencyMs is 0 here since no real LLM call is made in the stub.
-    meta: {
-      model: "gpt-4o-mini",
-      latencyMs: 0,
-      fallbackUsed: false,
-    },
-  };
-
-  // Send the stub back as JSON with HTTP 200.
-  res.json(stub);
+  // 4. Analysis with model fallback.
+  try {
+    const { response, fallbackEvents } = await runAnalysis(input.text);
+    console.log(
+      JSON.stringify({
+        event: "analyze_success",
+        userId,
+        model: response.meta.model,
+        latencyMs: response.meta.latencyMs,
+        fallbackUsed: response.meta.fallbackUsed,
+        fallbackEvents,
+        counts: {
+          vocab: response.vocab.length,
+          inBookRefs: response.inBookRefs.length,
+          realWorldRefs: response.realWorldRefs.length,
+        },
+      })
+    );
+    return res.status(200).json(response);
+  } catch (e) {
+    if (e instanceof ModelFailureError) {
+      console.error(JSON.stringify({ event: "analyze_model_failure", userId, reason: e.message }));
+      return res.status(500).json({ error: "Analysis failed. Please try again.", code: "MODEL_FAILURE" });
+    }
+    console.error(JSON.stringify({ event: "analyze_error", userId, reason: String(e) }));
+    return res.status(500).json({ error: "Analysis failed. Please try again.", code: "SERVER_ERROR" });
+  }
 }
