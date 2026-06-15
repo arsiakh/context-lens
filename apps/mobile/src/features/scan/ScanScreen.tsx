@@ -31,11 +31,13 @@ export default function ScanScreen() {
     normalizedText,
     ocrError,
     bookTitleHint,
+    authorHint,
     setCaptured,
     setExtracting,
     setExtracted,
     setOcrError,
     setBookTitleHint,
+    setAuthorHint,
     analyze,
     reset,
   } = useScanStore();
@@ -130,6 +132,17 @@ export default function ScanScreen() {
           placeholderTextColor="#999"
           value={bookTitleHint}
           onChangeText={setBookTitleHint}
+          autoCapitalize="words"
+          autoCorrect={false}
+          returnKeyType="done"
+        />
+        <Text style={styles.inputLabel}>Author</Text>
+        <TextInput
+          style={styles.authorInput}
+          placeholder="Optional"
+          placeholderTextColor="#999"
+          value={authorHint}
+          onChangeText={setAuthorHint}
           autoCapitalize="words"
           autoCorrect={false}
           returnKeyType="done"
@@ -312,6 +325,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   titleInput: {
+    borderWidth: 1.5,
+    borderColor: "#dedbf9",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#222",
+    marginBottom: 12,
+  },
+  authorInput: {
     borderWidth: 1.5,
     borderColor: "#dedbf9",
     borderRadius: 10,

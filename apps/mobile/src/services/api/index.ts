@@ -28,7 +28,12 @@ export class AnalyzeError extends Error {
   }
 }
 
-export async function analyzePassage(text: string, bookTitleHint?: string | null): Promise<AnalyzeResponse> {
+export interface AnalyzePassageHint {
+  bookTitle?: string | null;
+  author?: string | null;
+}
+
+export async function analyzePassage(text: string, hint: AnalyzePassageHint = {}): Promise<AnalyzeResponse> {
   if (!API_URL) {
     throw new AnalyzeError("server", "API URL is not configured. Set EXPO_PUBLIC_API_URL.");
   }
@@ -50,7 +55,10 @@ export async function analyzePassage(text: string, bookTitleHint?: string | null
       },
       body: JSON.stringify({
         text,
-        hint: { bookTitle: bookTitleHint?.trim() || null },
+        hint: {
+          bookTitle: hint.bookTitle?.trim() || null,
+          author: hint.author?.trim() || null,
+        },
       }),
     });
   } catch {

@@ -32,6 +32,7 @@ interface ScanState {
   analyzeResponse: AnalyzeResponse | null;
   analyzeError: AnalyzeErrorState | null;
   bookTitleHint: string;
+  authorHint: string;
   confirmedBookTitle: string | null;
   needsBookTitleConfirmation: boolean;
 
@@ -41,6 +42,7 @@ interface ScanState {
   setExtracted: (raw: string, normalized: string) => void;
   setOcrError: (message: string) => void;
   setBookTitleHint: (title: string) => void;
+  setAuthorHint: (author: string) => void;
   confirmBookTitle: (title: string) => void;
   analyze: () => Promise<void>;
   reset: () => void;
@@ -57,6 +59,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
   analyzeResponse: null,
   analyzeError: null,
   bookTitleHint: "",
+  authorHint: "",
   confirmedBookTitle: null,
   needsBookTitleConfirmation: false,
 
@@ -66,6 +69,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
     set({ status: "extracted", rawText: raw, normalizedText: normalized }),
   setOcrError: (message) => set({ status: "error", ocrError: message }),
   setBookTitleHint: (title) => set({ bookTitleHint: title }),
+  setAuthorHint: (author) => set({ authorHint: author }),
   confirmBookTitle: (title) => {
     const cleaned = title.trim() || "Unknown Book";
     set({
@@ -78,12 +82,16 @@ export const useScanStore = create<ScanState>((set, get) => ({
   // Sends the normalized passage to the backend and stores the annotated result.
   // Screens read analyzeStatus/analyzeResponse/analyzeError and render accordingly.
   analyze: async () => {
-    const { normalizedText: text, bookTitleHint } = get();
+    const { normalizedText: text, bookTitleHint, authorHint } = get();
     if (!text) return;
     set({ analyzeStatus: "analyzing", analyzeError: null, needsBookTitleConfirmation: false });
     try {
       const cleanedHint = bookTitleHint.trim();
-      const response = await analyzePassage(text, cleanedHint);
+      const cleanedAuthor = authorHint.trim();
+      const response = await analyzePassage(text, {
+        bookTitle: cleanedHint,
+        author: cleanedAuthor,
+      });
       const inferredTitle = response.bookInference.title?.trim() || null;
       const highConfidence = response.bookInference.confidence >= BOOK_INFERENCE_THRESHOLD;
       set({
@@ -112,6 +120,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       analyzeResponse: null,
       analyzeError: null,
       bookTitleHint: "",
+      authorHint: "",
       confirmedBookTitle: null,
       needsBookTitleConfirmation: false,
     }),

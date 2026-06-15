@@ -74,18 +74,23 @@ export interface AnalysisResult {
 }
 
 function buildAnalysisUserContent(passage: string, hint: AnalyzeRequestHint): string {
-  if (!hint.bookTitle) return passage;
+  if (!hint.bookTitle && !hint.author) return passage;
 
-  return `BOOK TITLE HINT:
-${hint.bookTitle}
+  const hintLines = [
+    "BOOK CONTEXT HINTS:",
+    `Title: ${hint.bookTitle ?? "unknown"}`,
+    `Author: ${hint.author ?? "unknown"}`,
+  ].join("\n");
 
-Use the title above as context for in-book references and real-world references when it is helpful, but do not invent plot details that are not supported by the photographed passage. Still return bookInference.title as the title only.
+  return `${hintLines}
+
+Use the title and/or author above as context for in-book references and real-world references when helpful, but do not invent plot details that are not supported by the photographed passage. Still return bookInference.title as the title only, without the author.
 
 PASSAGE:
 ${passage}`;
 }
 
-export async function runAnalysis(passage: string, hint: AnalyzeRequestHint = { bookTitle: null }): Promise<AnalysisResult> {
+export async function runAnalysis(passage: string, hint: AnalyzeRequestHint = { bookTitle: null, author: null }): Promise<AnalysisResult> {
   const startedAt = Date.now();
   const fallbackEvents: { step: string; reason: string }[] = [];
   const attempts: Attempt[] = [];
@@ -103,7 +108,7 @@ export async function runAnalysis(passage: string, hint: AnalyzeRequestHint = { 
   // ── Attempt 2: gpt-4o-mini + repair prompt ───────────────────────────────────
   if (!finalParsed) {
     fallbackEvents.push({ step: "repair", reason: firstParsed.error ?? "unknown" });
-    const repairUser = `PASSAGE:\n${passage}\n\nBOOK TITLE HINT:\n${hint.bookTitle ?? "null"}\n\nINVALID RESPONSE:\n${first.raw}\n\nVALIDATION ERROR:\n${firstParsed.error}`;
+    const repairUser = `PASSAGE:\n${passage}\n\nBOOK TITLE HINT:\n${hint.bookTitle ?? "null"}\n\nAUTHOR HINT:\n${hint.author ?? "null"}\n\nINVALID RESPONSE:\n${first.raw}\n\nVALIDATION ERROR:\n${firstParsed.error}`;
     const repair = await callModel("gpt-4o-mini", REPAIR_PROMPT, repairUser);
     const repairParsed = tryParse(repair.raw);
     attempts.push({ label: "repair", model: "gpt-4o-mini", ...repairParsed });
