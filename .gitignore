@@ -26,6 +26,10 @@ temp/
 *.tmp
 *.temp
 
+# --- Local planning/reference docs ---
+docs/*.pdf
+docs/*.csv
+
 # --- OS ---
 .DS_Store
 Thumbs.db

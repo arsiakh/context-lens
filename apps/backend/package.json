@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "vercel dev",
+    "serve": "vercel dev",
     "deploy": "vercel --prod"
   },
   "devDependencies": {
@@ -12,7 +12,11 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.108.1",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "@vercel/node": "^5.6.21",
+    "openai": "^6.42.0",
     "zod": "^4.3.6"
   }
 }
