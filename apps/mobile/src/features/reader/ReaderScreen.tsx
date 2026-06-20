@@ -14,6 +14,7 @@ import type { GestureResponderEvent } from "react-native";
 import { useEffect, useState } from "react";
 import { useScanStore } from "../../stores/scanStore";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
+import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
 import { renderAnnotatedText, type AnnotatedTextSegment } from "./renderAnnotatedText";
 
 type ReferenceSelection =
@@ -23,8 +24,7 @@ type ReferenceSelection =
 
 type VocabSelection = {
   item: VocabItem;
-  anchorX: number;
-  anchorY: number;
+  anchor: PopoverAnchor;
 } | null;
 
 export default function ReaderScreen() {
@@ -223,8 +223,12 @@ export default function ReaderScreen() {
 function toVocabSelection(item: VocabItem, event: GestureResponderEvent): VocabSelection {
   return {
     item,
-    anchorX: event.nativeEvent.pageX,
-    anchorY: event.nativeEvent.pageY,
+    anchor: {
+      x: event.nativeEvent.pageX,
+      y: event.nativeEvent.pageY,
+      width: 0,
+      height: 0,
+    },
   };
 }
 
@@ -249,7 +253,8 @@ function VocabPopover({
   onDismiss: () => void;
 }) {
   const item = selection?.item ?? null;
-  const layout = selection ? getPopoverLayout(selection.anchorX, selection.anchorY) : null;
+  const viewport = Dimensions.get("window");
+  const layout = selection ? getPopoverLayout(selection.anchor, viewport) : null;
 
   return (
     <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
@@ -263,10 +268,13 @@ function VocabPopover({
               style={[
                 styles.popoverPointer,
                 {
-                  left: layout.pointerLeft,
-                  top: layout.isBelow ? -8 : undefined,
-                  bottom: layout.isBelow ? undefined : -8,
+                  left: layout.arrowLeft,
+                  top: layout.placement === "below" ? -8 : undefined,
+                  bottom: layout.placement === "below" ? undefined : -8,
                 },
+                layout.placement === "below"
+                  ? styles.popoverPointerBelow
+                  : styles.popoverPointerAbove,
               ]}
             />
           )}
@@ -287,26 +295,6 @@ function VocabPopover({
       </Pressable>
     </Modal>
   );
-}
-
-function getPopoverLayout(anchorX: number, anchorY: number) {
-  const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
-  const margin = 14;
-  const cardWidth = Math.min(390, screenWidth - margin * 2);
-  const estimatedCardHeight = 230;
-  const canFitBelow = anchorY + estimatedCardHeight + 18 < screenHeight - margin;
-  const isBelow = canFitBelow || anchorY < estimatedCardHeight + margin;
-  const left = clamp(anchorX - cardWidth / 2, margin, screenWidth - cardWidth - margin);
-  const top = isBelow
-    ? clamp(anchorY + 16, margin, screenHeight - estimatedCardHeight - margin)
-    : clamp(anchorY - estimatedCardHeight - 16, margin, screenHeight - estimatedCardHeight - margin);
-  const pointerLeft = clamp(anchorX - left - 9, 18, cardWidth - 36);
-
-  return { width: cardWidth, left, top, pointerLeft, isBelow };
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(value, max));
 }
 
 function ReferenceSheet({
@@ -466,8 +454,15 @@ const styles = StyleSheet.create({
     height: 18,
     backgroundColor: "rgba(255, 255, 255, 0.96)",
     transform: [{ rotate: "45deg" }],
+  },
+  popoverPointerBelow: {
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(0, 0, 0, 0.14)",
+  },
+  popoverPointerAbove: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(0, 0, 0, 0.14)",
   },
   dictionaryTitle: {
