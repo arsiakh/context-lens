@@ -19,7 +19,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useScanStore } from "../../stores/scanStore";
 import { extractAndNormalize } from "../../services/ocr";
-import { readerPreviewFixture } from "../reader/readerPreviewFixture";
+import { readerPreviewAuthor, readerPreviewFixture } from "../reader/readerPreviewFixture";
 
 type ScanNavProp = NativeStackNavigationProp<RootStackParamList, "Scan">;
 
@@ -198,7 +198,7 @@ export default function ScanScreen() {
         <TouchableOpacity
           style={styles.previewButton}
           onPress={() => {
-            loadPreviewAnalysis(readerPreviewFixture);
+            loadPreviewAnalysis(readerPreviewFixture, readerPreviewAuthor);
             navigation.navigate("Reader");
           }}
         >

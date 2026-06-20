@@ -44,7 +44,7 @@ interface ScanState {
   setBookTitleHint: (title: string) => void;
   setAuthorHint: (author: string) => void;
   confirmBookTitle: (title: string) => void;
-  loadPreviewAnalysis: (response: AnalyzeResponse) => void;
+  loadPreviewAnalysis: (response: AnalyzeResponse, author?: string) => void;
   analyze: () => Promise<void>;
   reset: () => void;
 }
@@ -79,7 +79,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       needsBookTitleConfirmation: false,
     });
   },
-  loadPreviewAnalysis: (response) =>
+  loadPreviewAnalysis: (response, author = "") =>
     set({
       status: "extracted",
       rawText: response.normalizedText,
@@ -88,6 +88,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
       analyzeStatus: "done",
       analyzeResponse: response,
       analyzeError: null,
+      authorHint: author,
       confirmedBookTitle: response.bookInference.title,
       needsBookTitleConfirmation: false,
     }),

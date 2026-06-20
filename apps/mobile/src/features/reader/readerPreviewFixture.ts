@@ -50,3 +50,5 @@ export const readerPreviewFixture: AnalyzeResponse = {
     fallbackUsed: false,
   },
 };
+
+export const readerPreviewAuthor = "Jane Austen, 1813";

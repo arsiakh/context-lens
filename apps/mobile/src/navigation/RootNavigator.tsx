@@ -36,7 +36,7 @@ export default function RootNavigator() {
           // Authenticated stack — user is signed in
           <>
             <Stack.Screen name="Scan" component={ScanScreen} options={{ title: "Scan" }} />
-            <Stack.Screen name="Reader" component={ReaderScreen} options={{ title: "Reader" }} />
+            <Stack.Screen name="Reader" component={ReaderScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Library" component={LibraryScreen} options={{ title: "Library" }} />
           </>
         ) : (
