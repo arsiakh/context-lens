@@ -1,5 +1,6 @@
 import {
   ActivityIndicator,
+  Animated,
   Dimensions,
   Pressable,
   Modal,
@@ -11,7 +12,9 @@ import {
   View,
 } from "react-native";
 import type { GestureResponderEvent } from "react-native";
+import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
+import { BlurTargetView, BlurView } from "expo-blur";
 import { useScanStore } from "../../stores/scanStore";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
 import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
@@ -41,6 +44,7 @@ export default function ReaderScreen() {
   const [titleDraft, setTitleDraft] = useState("");
   const [selectedVocab, setSelectedVocab] = useState<VocabSelection>(null);
   const [selectedReference, setSelectedReference] = useState<ReferenceSelection>(null);
+  const blurTargetRef = useRef<View>(null);
 
   useEffect(() => {
     if (needsBookTitleConfirmation) {
@@ -89,6 +93,7 @@ export default function ReaderScreen() {
 
   return (
     <>
+    <BlurTargetView ref={blurTargetRef} style={styles.blurTarget}>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Book inference */}
       <Text style={styles.sectionLabel}>Book</Text>
@@ -170,7 +175,10 @@ export default function ReaderScreen() {
         model: {meta.model} · {meta.latencyMs}ms · fallback: {meta.fallbackUsed ? "yes" : "no"}
       </Text>
     </ScrollView>
+    </BlurTargetView>
     <Modal transparent visible={needsBookTitleConfirmation} animationType="fade">
+      <View style={styles.modalOverlay}>
+        <ModalBlur blurTarget={blurTargetRef} />
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Which book is this from?</Text>
@@ -200,9 +208,18 @@ export default function ReaderScreen() {
           </View>
         </View>
       </View>
+      </View>
     </Modal>
-    <VocabPopover selection={selectedVocab} onDismiss={() => setSelectedVocab(null)} />
-    <ReferenceSheet selection={selectedReference} onDismiss={() => setSelectedReference(null)} />
+    <VocabPopover
+      selection={selectedVocab}
+      blurTarget={blurTargetRef}
+      onDismiss={() => setSelectedVocab(null)}
+    />
+    <ReferenceSheet
+      selection={selectedReference}
+      blurTarget={blurTargetRef}
+      onDismiss={() => setSelectedReference(null)}
+    />
     </>
   );
 }
@@ -291,9 +308,11 @@ function AnnotationSegmentText({
 
 function VocabPopover({
   selection,
+  blurTarget,
   onDismiss,
 }: {
   selection: VocabSelection;
+  blurTarget: RefObject<View | null>;
   onDismiss: () => void;
 }) {
   const item = selection?.item ?? null;
@@ -309,6 +328,8 @@ function VocabPopover({
 
   return (
     <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
+      <View style={styles.modalOverlay}>
+      <ModalBlur blurTarget={blurTarget} />
       <Pressable style={styles.popoverBackdrop} onPress={onDismiss}>
         <Pressable style={[
           styles.dictionaryCard,
@@ -333,39 +354,71 @@ function VocabPopover({
               ]}
             />
           )}
-          <Text style={styles.dictionaryTitle}>Dictionary</Text>
-          <View style={styles.dictionaryRule} />
           {item && (
             <>
-              <Text style={styles.dictionaryTerm}>
-                {item.term} <Text style={styles.dictionaryPos}>{item.pos}</Text>
-              </Text>
+              <View style={styles.dictionaryHeader}>
+                <View style={styles.dictionaryHeading}>
+                  <Text style={styles.dictionaryTitle}>Vocabulary</Text>
+                  <Text style={styles.dictionaryTerm}>{item.term}</Text>
+                  <Text style={styles.dictionaryPos}>{item.pos}</Text>
+                </View>
+                <TouchableOpacity style={styles.dictionaryCloseButton} onPress={onDismiss}>
+                  <Text style={styles.dictionaryCloseText}>×</Text>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.dictionaryDefinition}>{item.definition}</Text>
-              <Text style={styles.dictionaryExample}>{item.example}</Text>
+              <View style={styles.dictionaryExampleCard}>
+                <Text style={styles.dictionaryExample}>“{item.example}”</Text>
+              </View>
+              <View style={styles.dictionaryTags}>
+                <View style={styles.dictionaryTag}>
+                  <Text style={styles.dictionaryTagText}>{item.pos}</Text>
+                </View>
+                <View style={styles.dictionaryTag}>
+                  <Text style={styles.dictionaryTagText}>contextual meaning</Text>
+                </View>
+              </View>
             </>
           )}
-          <View style={styles.dictionaryDivider} />
-          <Text style={styles.dictionaryAction}>Definition from Context Lens</Text>
         </Pressable>
       </Pressable>
+      </View>
     </Modal>
   );
 }
 
 function ReferenceSheet({
   selection,
+  blurTarget,
   onDismiss,
 }: {
   selection: ReferenceSelection;
+  blurTarget: RefObject<View | null>;
   onDismiss: () => void;
 }) {
   const item = selection?.item ?? null;
   const isRealWorld = selection?.type === "realWorldRef";
   const title = isRealWorld ? "Real-world Reference" : "In-book Context";
+  const sheetTranslateY = useRef(new Animated.Value(500)).current;
+
+  useEffect(() => {
+    if (!selection) return;
+    sheetTranslateY.setValue(500);
+    Animated.spring(sheetTranslateY, {
+      toValue: 0,
+      damping: 30,
+      stiffness: 290,
+      mass: 1,
+      useNativeDriver: true,
+    }).start();
+  }, [selection, sheetTranslateY]);
 
   return (
-    <Modal transparent visible={selection !== null} animationType="slide" onRequestClose={onDismiss}>
+    <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
+      <View style={styles.modalOverlay}>
+      <ModalBlur blurTarget={blurTarget} />
       <Pressable style={styles.sheetBackdrop} onPress={onDismiss}>
+        <Animated.View style={{ transform: [{ translateY: sheetTranslateY }] }}>
         <Pressable style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>
@@ -409,12 +462,28 @@ function ReferenceSheet({
             </ScrollView>
           )}
         </Pressable>
+        </Animated.View>
       </Pressable>
+      </View>
     </Modal>
   );
 }
 
+function ModalBlur({ blurTarget }: { blurTarget: RefObject<View | null> }) {
+  return (
+    <BlurView
+      blurTarget={blurTarget}
+      blurMethod="dimezisBlurViewSdk31Plus"
+      intensity={24}
+      tint="default"
+      style={StyleSheet.absoluteFill}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
+  blurTarget: { flex: 1 },
+  modalOverlay: { flex: 1 },
   container: { flex: 1, backgroundColor: "#fff" },
   content: { padding: 20, paddingBottom: 48 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32, backgroundColor: "#fff" },
@@ -471,7 +540,7 @@ const styles = StyleSheet.create({
   meta: { fontSize: 12, color: "#999", fontFamily: "Courier" },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    backgroundColor: "transparent",
     justifyContent: "center",
     padding: 24,
   },
@@ -521,88 +590,129 @@ const styles = StyleSheet.create({
   },
   popoverBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.42)",
+    backgroundColor: "transparent",
   },
   dictionaryCard: {
     position: "absolute",
-    borderRadius: 18,
-    backgroundColor: "rgba(255, 255, 255, 0.96)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(0, 0, 0, 0.18)",
-    paddingTop: 16,
-    paddingHorizontal: 22,
+    borderRadius: 20,
+    backgroundColor: "rgba(28, 13, 5, 0.98)",
+    borderWidth: 1,
+    borderColor: "rgba(196, 133, 42, 0.22)",
+    paddingTop: 18,
+    paddingHorizontal: 18,
     paddingBottom: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    shadowOpacity: 0.58,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 14,
   },
   popoverPointer: {
     position: "absolute",
     width: 18,
     height: 18,
-    backgroundColor: "rgba(255, 255, 255, 0.96)",
+    backgroundColor: "rgba(28, 13, 5, 0.98)",
     transform: [{ rotate: "45deg" }],
   },
   popoverPointerBelow: {
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(0, 0, 0, 0.14)",
+    borderColor: "rgba(196, 133, 42, 0.24)",
   },
   popoverPointerAbove: {
     borderRightWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(0, 0, 0, 0.14)",
+    borderColor: "rgba(196, 133, 42, 0.24)",
   },
-  dictionaryTitle: {
-    fontSize: 20,
-    fontWeight: "400",
-    color: "#444",
-  },
-  dictionaryRule: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "#d8d8d8",
-    marginTop: 6,
+  dictionaryHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
     marginBottom: 10,
   },
+  dictionaryHeading: {
+    flex: 1,
+  },
+  dictionaryTitle: {
+    color: "rgba(196, 133, 42, 0.55)",
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: "600",
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    marginBottom: 3,
+  },
   dictionaryTerm: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#111",
-    marginBottom: 4,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "700",
+    color: "rgba(240, 226, 196, 0.97)",
   },
   dictionaryPos: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#888",
-  },
-  dictionaryDefinition: {
-    fontSize: 15,
-    lineHeight: 21,
-    color: "#111",
-  },
-  dictionaryExample: {
-    marginTop: 6,
-    fontSize: 14,
-    lineHeight: 20,
-    color: "#666",
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "400",
+    color: "rgba(196, 133, 42, 0.48)",
     fontStyle: "italic",
   },
-  dictionaryDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: "#ddd",
-    marginVertical: 12,
+  dictionaryCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(196, 133, 42, 0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(196, 133, 42, 0.20)",
   },
-  dictionaryAction: {
+  dictionaryCloseText: {
+    color: "rgba(232, 185, 107, 0.72)",
+    fontSize: 19,
+    lineHeight: 21,
+  },
+  dictionaryDefinition: {
+    fontSize: 13,
+    lineHeight: 21,
+    color: "rgba(240, 226, 196, 0.72)",
+    marginBottom: 10,
+  },
+  dictionaryExampleCard: {
+    borderRadius: 13,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: "rgba(196, 133, 42, 0.07)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(196, 133, 42, 0.15)",
+  },
+  dictionaryExample: {
     fontSize: 12,
-    fontWeight: "700",
-    color: "#555",
+    lineHeight: 19,
+    color: "rgba(232, 185, 107, 0.58)",
+    fontStyle: "italic",
+  },
+  dictionaryTags: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  dictionaryTag: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "rgba(196, 133, 42, 0.07)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(196, 133, 42, 0.14)",
+  },
+  dictionaryTagText: {
+    fontSize: 11,
+    color: "rgba(196, 133, 42, 0.58)",
   },
   sheetBackdrop: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(10, 5, 2, 0.62)",
+    backgroundColor: "transparent",
   },
   sheet: {
     maxHeight: "72%",
