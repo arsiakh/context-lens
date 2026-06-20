@@ -19,7 +19,7 @@ function closeTo(actual: number, expected: number, tolerance = 0.001) {
 
 const viewport = { width: 375, height: 812 };
 const arrowTipExtent = 18 / Math.SQRT2;
-const anchorClearance = 12;
+const anchorClearance = 5;
 
 {
   const anchor = { x: 160, y: 100, width: 40, height: 24 };

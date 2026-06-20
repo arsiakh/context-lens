@@ -40,7 +40,7 @@ export function getPopoverLayout(
   const margin = options.margin ?? 14;
   const maxWidth = options.maxWidth ?? 390;
   const height = options.height ?? 230;
-  const gap = options.gap ?? 12;
+  const gap = options.gap ?? 5;
   const arrowSize = options.arrowSize ?? 18;
   const cornerClearance = options.cornerClearance ?? 18;
   // A rotated square extends half of its diagonal beyond the card edge.

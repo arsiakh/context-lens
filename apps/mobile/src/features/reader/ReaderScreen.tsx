@@ -18,8 +18,8 @@ import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
 import { renderAnnotatedText, type AnnotatedTextSegment } from "./renderAnnotatedText";
 
 type ReferenceSelection =
-  | { type: "inBookRef"; item: InBookRef }
-  | { type: "realWorldRef"; item: RealWorldRef }
+  | { type: "inBookRef"; item: InBookRef; quote: string }
+  | { type: "realWorldRef"; item: RealWorldRef; quote: string }
   | null;
 
 type VocabSelection = {
@@ -267,13 +267,13 @@ function AnnotationSegmentText({
 
     if (segment.type === "inBookRef") {
       const item = inBookRefs[segment.annotationIndex];
-      if (item) onSelectReference({ type: "inBookRef", item });
+      if (item) onSelectReference({ type: "inBookRef", item, quote: segment.text });
       return;
     }
 
     if (segment.type === "realWorldRef") {
       const item = realWorldRefs[segment.annotationIndex];
-      if (item) onSelectReference({ type: "realWorldRef", item });
+      if (item) onSelectReference({ type: "realWorldRef", item, quote: segment.text });
     }
   }
 
@@ -360,24 +360,54 @@ function ReferenceSheet({
   onDismiss: () => void;
 }) {
   const item = selection?.item ?? null;
-  const title = selection?.type === "realWorldRef" ? "Real-world reference" : "In-book reference";
+  const isRealWorld = selection?.type === "realWorldRef";
+  const title = isRealWorld ? "Real-world Reference" : "In-book Context";
 
   return (
-    <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
+    <Modal transparent visible={selection !== null} animationType="slide" onRequestClose={onDismiss}>
       <Pressable style={styles.sheetBackdrop} onPress={onDismiss}>
         <Pressable style={styles.sheet}>
           <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>{title}</Text>
+          <View style={styles.sheetHeader}>
+            <View style={[
+              styles.sheetIcon,
+              isRealWorld ? styles.sheetIconRealWorld : styles.sheetIconInBook,
+            ]}>
+              <Text style={isRealWorld ? styles.sheetIconTextRealWorld : styles.sheetIconTextInBook}>
+                {isRealWorld ? "◎" : "B"}
+              </Text>
+            </View>
+            <View style={styles.sheetHeading}>
+              <Text style={styles.sheetTitle}>{title}</Text>
+              {item && <Text style={styles.sheetLabel}>{item.label}</Text>}
+            </View>
+            <TouchableOpacity style={styles.sheetCloseButton} onPress={onDismiss}>
+              <Text style={styles.sheetCloseText}>×</Text>
+            </TouchableOpacity>
+          </View>
           {item && (
-            <>
-              <Text style={styles.sheetLabel}>{item.label}</Text>
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={[
+                styles.sheetQuote,
+                isRealWorld ? styles.sheetQuoteRealWorld : styles.sheetQuoteInBook,
+              ]}>
+                <Text style={isRealWorld ? styles.sheetQuoteTextRealWorld : styles.sheetQuoteTextInBook}>
+                  “{selection?.quote}”
+                </Text>
+              </View>
               <Text style={styles.sheetBody}>{item.explanation}</Text>
-              <Text style={styles.sheetConfidence}>confidence {item.confidence.toFixed(2)}</Text>
-            </>
+              <View style={styles.sheetInsight}>
+                <Text style={styles.sheetInsightLabel}>Context Lens</Text>
+                <Text style={styles.sheetConfidence}>
+                  Analysis confidence {Math.round(item.confidence * 100)}%
+                </Text>
+              </View>
+            </ScrollView>
           )}
-          <TouchableOpacity style={styles.sheetButton} onPress={onDismiss}>
-            <Text style={styles.sheetButtonText}>Close</Text>
-          </TouchableOpacity>
         </Pressable>
       </Pressable>
     </Modal>
@@ -402,14 +432,19 @@ const styles = StyleSheet.create({
   confidence: { fontSize: 13, color: "#888", marginTop: 2 },
   passageBox: { backgroundColor: "#F7F6FF", borderRadius: 12, padding: 16 },
   passageText: { fontSize: 16, lineHeight: 26, color: "#222" },
-  vocabText: { backgroundColor: "#FFF9C4" },
-  inBookText: { textDecorationLine: "underline", textDecorationColor: "#5C6BC0" },
-  realWorldText: { fontWeight: "800" },
+  vocabText: { backgroundColor: "rgba(196, 133, 42, 0.24)", color: "#3B2412" },
+  inBookText: { fontWeight: "800", color: "#6F461C" },
+  realWorldText: {
+    color: "#356A9D",
+    textDecorationLine: "underline",
+    textDecorationStyle: "dotted",
+    textDecorationColor: "#60A5FA",
+  },
   empty: { marginTop: 18, fontSize: 15, color: "#888", fontStyle: "italic" },
   card: { borderRadius: 10, padding: 14, marginBottom: 10 },
   vocabCard: { backgroundColor: "#FFF9C4" },
-  inBookCard: { backgroundColor: "#F0F4FF", borderLeftWidth: 3, borderLeftColor: "#5C6BC0" },
-  realWorldCard: { backgroundColor: "#F3F0FF", borderLeftWidth: 3, borderLeftColor: "#7E57C2" },
+  inBookCard: { backgroundColor: "#FFF7E8", borderLeftWidth: 3, borderLeftColor: "#C4852A" },
+  realWorldCard: { backgroundColor: "#EEF6FF", borderLeftWidth: 3, borderLeftColor: "#60A5FA" },
   term: { fontSize: 16, fontWeight: "700", color: "#111", marginBottom: 4 },
   pos: { fontSize: 13, fontWeight: "400", color: "#777", fontStyle: "italic" },
   body: { fontSize: 14, lineHeight: 20, color: "#333" },
@@ -567,64 +602,153 @@ const styles = StyleSheet.create({
   sheetBackdrop: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.16)",
+    backgroundColor: "rgba(10, 5, 2, 0.62)",
   },
   sheet: {
-    minHeight: "42%",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    backgroundColor: "#fff",
-    paddingHorizontal: 22,
-    paddingTop: 10,
-    paddingBottom: 34,
+    maxHeight: "72%",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(196, 133, 42, 0.24)",
+    backgroundColor: "#1C0F07",
+    paddingTop: 12,
+    paddingBottom: 28,
     shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: -10 },
     elevation: 12,
   },
   sheetHandle: {
     alignSelf: "center",
-    width: 42,
-    height: 4,
+    width: 36,
+    height: 3,
     borderRadius: 999,
-    backgroundColor: "#d4d4d4",
-    marginBottom: 18,
+    backgroundColor: "rgba(196, 133, 42, 0.32)",
+    marginBottom: 14,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  sheetIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  sheetIconRealWorld: {
+    backgroundColor: "rgba(96, 165, 250, 0.10)",
+    borderColor: "rgba(96, 165, 250, 0.24)",
+  },
+  sheetIconInBook: {
+    backgroundColor: "rgba(196, 133, 42, 0.14)",
+    borderColor: "rgba(196, 133, 42, 0.24)",
+  },
+  sheetIconTextRealWorld: {
+    color: "rgba(147, 197, 253, 0.88)",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  sheetIconTextInBook: {
+    color: "rgba(232, 185, 107, 0.88)",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  sheetHeading: {
+    flex: 1,
   },
   sheetTitle: {
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 10,
+    fontWeight: "600",
     textTransform: "uppercase",
-    letterSpacing: 0.8,
-    color: "#6858e9",
-    marginBottom: 8,
+    letterSpacing: 1.4,
+    color: "rgba(196, 133, 42, 0.58)",
+    marginBottom: 3,
   },
   sheetLabel: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#111",
-    marginBottom: 10,
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: "700",
+    color: "rgba(240, 226, 196, 0.92)",
+  },
+  sheetCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(196, 133, 42, 0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(196, 133, 42, 0.18)",
+  },
+  sheetCloseText: {
+    color: "rgba(232, 185, 107, 0.72)",
+    fontSize: 19,
+    lineHeight: 21,
+  },
+  sheetScroll: {
+    flexGrow: 0,
+  },
+  sheetContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  sheetQuote: {
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 16,
+  },
+  sheetQuoteRealWorld: {
+    backgroundColor: "rgba(96, 165, 250, 0.07)",
+    borderColor: "rgba(96, 165, 250, 0.17)",
+  },
+  sheetQuoteInBook: {
+    backgroundColor: "rgba(196, 133, 42, 0.09)",
+    borderColor: "rgba(196, 133, 42, 0.20)",
+  },
+  sheetQuoteTextRealWorld: {
+    color: "rgba(191, 219, 254, 0.80)",
+    fontSize: 13,
+    lineHeight: 21,
+    fontStyle: "italic",
+  },
+  sheetQuoteTextInBook: {
+    color: "rgba(253, 230, 180, 0.82)",
+    fontSize: 13,
+    lineHeight: 21,
+    fontStyle: "italic",
   },
   sheetBody: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#333",
+    fontSize: 13,
+    lineHeight: 21,
+    color: "rgba(240, 226, 196, 0.72)",
+    marginBottom: 16,
+  },
+  sheetInsight: {
+    borderRadius: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+    backgroundColor: "rgba(196, 133, 42, 0.06)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(196, 133, 42, 0.13)",
+  },
+  sheetInsightLabel: {
+    color: "rgba(196, 133, 42, 0.58)",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    marginBottom: 3,
   },
   sheetConfidence: {
-    marginTop: 12,
     fontSize: 12,
-    color: "#888",
-  },
-  sheetButton: {
-    marginTop: 22,
-    alignSelf: "flex-start",
-    backgroundColor: "#6858e9",
-    borderRadius: 8,
-    paddingVertical: 11,
-    paddingHorizontal: 18,
-  },
-  sheetButtonText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: "rgba(196, 133, 42, 0.68)",
   },
 });
