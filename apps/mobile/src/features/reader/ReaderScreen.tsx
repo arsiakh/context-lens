@@ -25,6 +25,8 @@ import { colors, radii, spacing, typography } from "../../ui/theme";
 import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
 import { renderAnnotatedText, type AnnotatedTextSegment } from "./renderAnnotatedText";
 
+const paperTexture = require("../../../assets/textures/paper-grain.png");
+
 type ReferenceSelection =
   | { type: "inBookRef"; item: InBookRef; quote: string }
   | { type: "realWorldRef"; item: RealWorldRef; quote: string }
@@ -102,7 +104,7 @@ export default function ReaderScreen() {
     <>
     <BlurTargetView ref={blurTargetRef} style={styles.blurTarget}>
     <ImageBackground
-      source={require("../../../assets/textures/paper-grain.png")}
+      source={paperTexture}
       style={styles.readerPaper}
       imageStyle={styles.readerPaperTexture}
       resizeMode="cover"
@@ -357,7 +359,13 @@ function VocabPopover({
   }, [item]);
 
   return (
-    <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
+    <Modal
+      transparent
+      visible={selection !== null}
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      onRequestClose={onDismiss}
+    >
       <View style={styles.modalOverlay}>
       <Pressable style={styles.popoverBackdrop} onPress={onDismiss}>
         <Pressable style={[
@@ -383,6 +391,12 @@ function VocabPopover({
               ]}
             />
           )}
+          <ImageBackground
+            source={paperTexture}
+            style={styles.dictionarySurface}
+            imageStyle={styles.dictionarySurfaceTexture}
+            resizeMode="cover"
+          >
           {item && (
             <>
               <View style={styles.dictionaryHeader}>
@@ -409,6 +423,7 @@ function VocabPopover({
               </View>
             </>
           )}
+          </ImageBackground>
         </Pressable>
       </Pressable>
       </View>
@@ -443,12 +458,27 @@ function ReferenceSheet({
   }, [selection, sheetTranslateY]);
 
   return (
-    <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
+    <Modal
+      transparent
+      visible={selection !== null}
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      onRequestClose={onDismiss}
+    >
       <View style={styles.modalOverlay}>
       <ModalBlur blurTarget={blurTarget} />
       <Pressable style={styles.sheetBackdrop} onPress={onDismiss}>
-        <Animated.View style={{ transform: [{ translateY: sheetTranslateY }] }}>
+        <Animated.View style={[
+          styles.sheetAnimatedContainer,
+          { transform: [{ translateY: sheetTranslateY }] },
+        ]}>
         <Pressable style={styles.sheet}>
+          <ImageBackground
+            source={paperTexture}
+            style={styles.sheetSurface}
+            imageStyle={styles.sheetSurfaceTexture}
+            resizeMode="cover"
+          >
           <View style={styles.sheetHandle} />
           <View style={styles.sheetHeader}>
             <View style={[
@@ -460,7 +490,10 @@ function ReferenceSheet({
               </Text>
             </View>
             <View style={styles.sheetHeading}>
-              <Text style={styles.sheetTitle}>{title}</Text>
+              <Text style={[
+                styles.sheetTitle,
+                isRealWorld ? styles.sheetTitleRealWorld : styles.sheetTitleInBook,
+              ]}>{title}</Text>
               {item && <Text style={styles.sheetLabel}>{item.label}</Text>}
             </View>
             <TouchableOpacity style={styles.sheetCloseButton} onPress={onDismiss}>
@@ -490,6 +523,7 @@ function ReferenceSheet({
               </View>
             </ScrollView>
           )}
+          </ImageBackground>
         </Pressable>
         </Animated.View>
       </Pressable>
@@ -503,7 +537,7 @@ function ModalBlur({ blurTarget }: { blurTarget: RefObject<View | null> }) {
     <BlurView
       blurTarget={blurTarget}
       blurMethod="dimezisBlurViewSdk31Plus"
-      intensity={10}
+      intensity={6}
       tint="default"
       style={StyleSheet.absoluteFill}
     />
@@ -764,35 +798,44 @@ const styles = StyleSheet.create({
   },
   dictionaryCard: {
     position: "absolute",
-    borderRadius: 20,
-    backgroundColor: "rgba(28, 13, 5, 0.98)",
-    borderWidth: 1,
-    borderColor: "rgba(196, 133, 42, 0.22)",
+    borderRadius: radii.large,
+    backgroundColor: colors.glassStrong,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(86, 57, 37, 0.24)",
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.24,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  dictionarySurface: {
+    overflow: "hidden",
+    borderRadius: radii.large,
     paddingTop: 18,
     paddingHorizontal: 18,
     paddingBottom: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.58,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 14,
+    backgroundColor: "rgba(249, 245, 239, 0.84)",
+  },
+  dictionarySurfaceTexture: {
+    opacity: 0.38,
+    borderRadius: radii.large,
   },
   popoverPointer: {
     position: "absolute",
     width: 18,
     height: 18,
-    backgroundColor: "rgba(28, 13, 5, 0.98)",
+    backgroundColor: "rgba(246, 240, 232, 0.98)",
     transform: [{ rotate: "45deg" }],
   },
   popoverPointerBelow: {
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(196, 133, 42, 0.24)",
+    borderColor: "rgba(86, 57, 37, 0.24)",
   },
   popoverPointerAbove: {
     borderRightWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(196, 133, 42, 0.24)",
+    borderColor: "rgba(86, 57, 37, 0.24)",
   },
   dictionaryHeader: {
     flexDirection: "row",
@@ -804,7 +847,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dictionaryTitle: {
-    color: "rgba(196, 133, 42, 0.55)",
+    color: colors.brown,
     fontSize: 10,
     lineHeight: 13,
     fontWeight: "600",
@@ -816,14 +859,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 22,
     fontWeight: "700",
-    color: "rgba(240, 226, 196, 0.97)",
+    color: colors.ink,
   },
   dictionaryPos: {
     marginTop: 2,
     fontSize: 11,
     lineHeight: 15,
     fontWeight: "400",
-    color: "rgba(196, 133, 42, 0.48)",
+    color: colors.inkFaint,
     fontStyle: "italic",
   },
   dictionaryCloseButton: {
@@ -832,19 +875,19 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(196, 133, 42, 0.10)",
+    backgroundColor: colors.brownWash,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(196, 133, 42, 0.20)",
+    borderColor: colors.line,
   },
   dictionaryCloseText: {
-    color: "rgba(232, 185, 107, 0.72)",
+    color: colors.brown,
     fontSize: 19,
     lineHeight: 21,
   },
   dictionaryDefinition: {
     fontSize: 13,
     lineHeight: 21,
-    color: "rgba(240, 226, 196, 0.72)",
+    color: colors.inkSoft,
     marginBottom: 10,
   },
   dictionaryExampleCard: {
@@ -852,14 +895,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     marginBottom: 10,
-    backgroundColor: "rgba(196, 133, 42, 0.07)",
+    backgroundColor: "rgba(118, 82, 56, 0.08)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(196, 133, 42, 0.15)",
+    borderColor: colors.line,
   },
   dictionaryExample: {
     fontSize: 12,
     lineHeight: 19,
-    color: "rgba(232, 185, 107, 0.58)",
+    color: colors.brown,
+    fontFamily: typography.reading,
     fontStyle: "italic",
   },
   dictionaryTags: {
@@ -871,40 +915,59 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 999,
-    backgroundColor: "rgba(196, 133, 42, 0.07)",
+    backgroundColor: colors.brownWash,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(196, 133, 42, 0.14)",
+    borderColor: colors.line,
   },
   dictionaryTagText: {
     fontSize: 11,
-    color: "rgba(196, 133, 42, 0.58)",
+    color: colors.brown,
   },
   sheetBackdrop: {
     flex: 1,
     justifyContent: "flex-end",
     backgroundColor: "transparent",
   },
+  sheetAnimatedContainer: {
+    width: "100%",
+    maxHeight: "82%",
+    justifyContent: "flex-end",
+  },
   sheet: {
-    maxHeight: "72%",
+    width: "100%",
+    maxHeight: "100%",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(196, 133, 42, 0.24)",
-    backgroundColor: "#1C0F07",
-    paddingTop: 12,
-    paddingBottom: 28,
-    shadowColor: "#000",
-    shadowOpacity: 0.45,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: -10 },
+    borderWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 0,
+    borderColor: "rgba(86, 57, 37, 0.22)",
+    backgroundColor: colors.glassStrong,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
     elevation: 12,
+  },
+  sheetSurface: {
+    maxHeight: "100%",
+    overflow: "hidden",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 12,
+    paddingBottom: 38,
+    backgroundColor: "rgba(249, 245, 239, 0.88)",
+  },
+  sheetSurfaceTexture: {
+    opacity: 0.42,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
   sheetHandle: {
     alignSelf: "center",
     width: 36,
     height: 3,
     borderRadius: 999,
-    backgroundColor: "rgba(196, 133, 42, 0.32)",
+    backgroundColor: "rgba(86, 57, 37, 0.32)",
     marginBottom: 14,
   },
   sheetHeader: {
@@ -923,20 +986,20 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   sheetIconRealWorld: {
-    backgroundColor: "rgba(96, 165, 250, 0.10)",
-    borderColor: "rgba(96, 165, 250, 0.24)",
+    backgroundColor: colors.blueWash,
+    borderColor: "rgba(101, 122, 140, 0.26)",
   },
   sheetIconInBook: {
-    backgroundColor: "rgba(196, 133, 42, 0.14)",
-    borderColor: "rgba(196, 133, 42, 0.24)",
+    backgroundColor: colors.brownWash,
+    borderColor: colors.line,
   },
   sheetIconTextRealWorld: {
-    color: "rgba(147, 197, 253, 0.88)",
+    color: colors.blue,
     fontSize: 20,
     fontWeight: "700",
   },
   sheetIconTextInBook: {
-    color: "rgba(232, 185, 107, 0.88)",
+    color: colors.brown,
     fontSize: 16,
     fontWeight: "800",
   },
@@ -948,14 +1011,15 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 1.4,
-    color: "rgba(196, 133, 42, 0.58)",
     marginBottom: 3,
   },
+  sheetTitleRealWorld: { color: colors.blue },
+  sheetTitleInBook: { color: colors.brown },
   sheetLabel: {
     fontSize: 15,
     lineHeight: 19,
     fontWeight: "700",
-    color: "rgba(240, 226, 196, 0.92)",
+    color: colors.ink,
   },
   sheetCloseButton: {
     width: 28,
@@ -963,12 +1027,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(196, 133, 42, 0.10)",
+    backgroundColor: colors.brownWash,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(196, 133, 42, 0.18)",
+    borderColor: colors.line,
   },
   sheetCloseText: {
-    color: "rgba(232, 185, 107, 0.72)",
+    color: colors.brown,
     fontSize: 19,
     lineHeight: 21,
   },
@@ -977,7 +1041,7 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingBottom: 2,
   },
   sheetQuote: {
     borderRadius: 14,
@@ -986,41 +1050,43 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sheetQuoteRealWorld: {
-    backgroundColor: "rgba(96, 165, 250, 0.07)",
-    borderColor: "rgba(96, 165, 250, 0.17)",
+    backgroundColor: colors.blueWash,
+    borderColor: "rgba(101, 122, 140, 0.20)",
   },
   sheetQuoteInBook: {
-    backgroundColor: "rgba(196, 133, 42, 0.09)",
-    borderColor: "rgba(196, 133, 42, 0.20)",
+    backgroundColor: colors.brownWash,
+    borderColor: colors.line,
   },
   sheetQuoteTextRealWorld: {
-    color: "rgba(191, 219, 254, 0.80)",
+    color: colors.blue,
     fontSize: 13,
     lineHeight: 21,
     fontStyle: "italic",
+    fontFamily: typography.reading,
   },
   sheetQuoteTextInBook: {
-    color: "rgba(253, 230, 180, 0.82)",
+    color: colors.brown,
     fontSize: 13,
     lineHeight: 21,
     fontStyle: "italic",
+    fontFamily: typography.reading,
   },
   sheetBody: {
     fontSize: 13,
     lineHeight: 21,
-    color: "rgba(240, 226, 196, 0.72)",
+    color: colors.inkSoft,
     marginBottom: 16,
   },
   sheetInsight: {
     borderRadius: 14,
     paddingVertical: 11,
     paddingHorizontal: 13,
-    backgroundColor: "rgba(196, 133, 42, 0.06)",
+    backgroundColor: "rgba(118, 82, 56, 0.07)",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(196, 133, 42, 0.13)",
+    borderColor: colors.line,
   },
   sheetInsightLabel: {
-    color: "rgba(196, 133, 42, 0.58)",
+    color: colors.brown,
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.1,
@@ -1029,6 +1095,6 @@ const styles = StyleSheet.create({
   },
   sheetConfidence: {
     fontSize: 12,
-    color: "rgba(196, 133, 42, 0.68)",
+    color: colors.inkFaint,
   },
 });
