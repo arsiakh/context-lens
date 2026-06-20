@@ -1,5 +1,9 @@
 import {
   ActivityIndicator,
+  Animated,
+  Dimensions,
+  ImageBackground,
+  Pressable,
   Modal,
   ScrollView,
   StyleSheet,
@@ -8,10 +12,30 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useEffect, useState } from "react";
+import type { GestureResponderEvent } from "react-native";
+import type { RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
+import { BlurTargetView, BlurView } from "expo-blur";
+import { StatusBar } from "expo-status-bar";
+import { useNavigation } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useScanStore } from "../../stores/scanStore";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
+import { colors, radii, spacing, typography } from "../../ui/theme";
+import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
 import { renderAnnotatedText, type AnnotatedTextSegment } from "./renderAnnotatedText";
+
+const paperTexture = require("../../../assets/textures/paper-grain.png");
+
+type ReferenceSelection =
+  | { type: "inBookRef"; item: InBookRef; quote: string }
+  | { type: "realWorldRef"; item: RealWorldRef; quote: string }
+  | null;
+
+type VocabSelection = {
+  item: VocabItem;
+  anchor: PopoverAnchor;
+} | null;
 
 export default function ReaderScreen() {
   const {
@@ -19,12 +43,17 @@ export default function ReaderScreen() {
     analyzeResponse,
     analyzeError,
     normalizedText,
+    authorHint,
     confirmedBookTitle,
     needsBookTitleConfirmation,
     confirmBookTitle,
     analyze,
   } = useScanStore();
+  const navigation = useNavigation();
   const [titleDraft, setTitleDraft] = useState("");
+  const [selectedVocab, setSelectedVocab] = useState<VocabSelection>(null);
+  const [selectedReference, setSelectedReference] = useState<ReferenceSelection>(null);
+  const blurTargetRef = useRef<View>(null);
 
   useEffect(() => {
     if (needsBookTitleConfirmation) {
@@ -65,7 +94,7 @@ export default function ReaderScreen() {
     );
   }
 
-  const { bookInference, vocab, inBookRefs, realWorldRefs, meta } = analyzeResponse;
+  const { bookInference, vocab, inBookRefs, realWorldRefs } = analyzeResponse;
   const text = analyzeResponse.normalizedText ?? normalizedText ?? "";
   const totalAnnotations = vocab.length + inBookRefs.length + realWorldRefs.length;
   const displayTitle = confirmedBookTitle ?? bookInference.title ?? "Unknown";
@@ -73,82 +102,82 @@ export default function ReaderScreen() {
 
   return (
     <>
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Book inference */}
-      <Text style={styles.sectionLabel}>Book</Text>
-      <Text style={styles.bookTitle}>{displayTitle}</Text>
-      <Text style={styles.confidence}>
-        confidence {bookInference.confidence.toFixed(2)}
-        {confirmedBookTitle ? "  · confirmed" : ""}
-      </Text>
-
-      {/* Passage */}
-      <Text style={styles.sectionLabel}>Passage</Text>
-      <View style={styles.passageBox}>
-        <Text style={styles.passageText}>
-          {segments.map((segment, index) => (
-            <Text key={`${segment.type}-${index}`} style={segmentStyle(segment)}>
-              {segment.text}
-            </Text>
-          ))}
-        </Text>
+    <BlurTargetView ref={blurTargetRef} style={styles.blurTarget}>
+    <ImageBackground
+      source={paperTexture}
+      style={styles.readerPaper}
+      imageStyle={styles.readerPaperTexture}
+      resizeMode="cover"
+    >
+    <SafeAreaView style={styles.readerShell} edges={["top", "bottom"]}>
+      <StatusBar style="dark" />
+      <View style={styles.readerHeader}>
+        <TouchableOpacity
+          accessibilityLabel="Back"
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>‹</Text>
+        </TouchableOpacity>
+        <View style={styles.readerHeading}>
+          <Text style={styles.readerEyebrow} numberOfLines={1}>{displayTitle}</Text>
+          <Text style={styles.readerByline} numberOfLines={1}>
+            {authorHint.trim() || "Reading analysis"}
+          </Text>
+        </View>
+        <View style={styles.insightPill}>
+          <View style={styles.insightDot} />
+          <Text style={styles.insightPillText}>{totalAnnotations} insights</Text>
+        </View>
       </View>
 
-      {totalAnnotations === 0 && (
-        <Text style={styles.empty}>No highlights found for this passage.</Text>
-      )}
+      <ScrollView
+        horizontal
+        style={styles.legendScroll}
+        contentContainerStyle={styles.legendContent}
+        showsHorizontalScrollIndicator={false}
+      >
+        <LegendChip marker="H" label="Vocabulary" kind="vocab" />
+        <LegendChip marker="U" label="Real-world" kind="realWorld" />
+        <LegendChip marker="B" label="In-book" kind="inBook" />
+      </ScrollView>
 
-      {/* Vocab */}
-      {vocab.length > 0 && (
-        <>
-          <Text style={styles.sectionLabel}>Vocab ({vocab.length})</Text>
-          {vocab.map((v: VocabItem, i) => (
-            <View key={`v${i}`} style={[styles.card, styles.vocabCard]}>
-              <Text style={styles.term}>
-                {v.term} <Text style={styles.pos}>· {v.pos}</Text>
-              </Text>
-              <Text style={styles.body}>{v.definition}</Text>
-              <Text style={styles.example}>“{v.example}”</Text>
-            </View>
+      <View style={styles.readerDivider} />
+
+      <ScrollView
+        style={styles.readerScroll}
+        contentContainerStyle={styles.readerContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.passageText}>
+          {segments.map((segment, index) => (
+            <AnnotationSegmentText
+              key={`${segment.type}-${index}`}
+              segment={segment}
+              vocab={vocab}
+              inBookRefs={inBookRefs}
+              realWorldRefs={realWorldRefs}
+              onSelectVocab={(item, anchor) => setSelectedVocab({ item, anchor })}
+              onSelectReference={setSelectedReference}
+            />
           ))}
-        </>
-      )}
+        </Text>
+        {totalAnnotations === 0 && (
+          <Text style={styles.empty}>No highlights found for this passage.</Text>
+        )}
+      </ScrollView>
 
-      {/* In-book refs */}
-      {inBookRefs.length > 0 && (
-        <>
-          <Text style={styles.sectionLabel}>In-book references ({inBookRefs.length})</Text>
-          {inBookRefs.map((r: InBookRef, i) => (
-            <View key={`ib${i}`} style={[styles.card, styles.inBookCard]}>
-              <Text style={styles.term}>{r.label}</Text>
-              <Text style={styles.body}>{r.explanation}</Text>
-              <Text style={styles.confidenceSmall}>confidence {r.confidence.toFixed(2)}</Text>
-            </View>
-          ))}
-        </>
-      )}
-
-      {/* Real-world refs */}
-      {realWorldRefs.length > 0 && (
-        <>
-          <Text style={styles.sectionLabel}>Real-world references ({realWorldRefs.length})</Text>
-          {realWorldRefs.map((r: RealWorldRef, i) => (
-            <View key={`rw${i}`} style={[styles.card, styles.realWorldCard]}>
-              <Text style={styles.term}>{r.label}</Text>
-              <Text style={styles.body}>{r.explanation}</Text>
-              <Text style={styles.confidenceSmall}>confidence {r.confidence.toFixed(2)}</Text>
-            </View>
-          ))}
-        </>
-      )}
-
-      {/* Meta */}
-      <Text style={styles.sectionLabel}>Debug</Text>
-      <Text style={styles.meta}>
-        model: {meta.model} · {meta.latencyMs}ms · fallback: {meta.fallbackUsed ? "yes" : "no"}
-      </Text>
-    </ScrollView>
+      <View style={styles.readerTabBar}>
+        <ReaderTab icon="▣" label="Text" active />
+        <ReaderTab icon="◎" label="Context" />
+        <ReaderTab icon="⌄" label="Summary" />
+      </View>
+    </SafeAreaView>
+    </ImageBackground>
+    </BlurTargetView>
     <Modal transparent visible={needsBookTitleConfirmation} animationType="fade">
+      <View style={styles.modalOverlay}>
+        <ModalBlur blurTarget={blurTargetRef} />
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Which book is this from?</Text>
@@ -178,8 +207,54 @@ export default function ReaderScreen() {
           </View>
         </View>
       </View>
+      </View>
     </Modal>
+    <VocabPopover
+      selection={selectedVocab}
+      onDismiss={() => setSelectedVocab(null)}
+    />
+    <ReferenceSheet
+      selection={selectedReference}
+      blurTarget={blurTargetRef}
+      onDismiss={() => setSelectedReference(null)}
+    />
     </>
+  );
+}
+
+function LegendChip({
+  marker,
+  label,
+  kind,
+}: {
+  marker: string;
+  label: string;
+  kind: "vocab" | "realWorld" | "inBook";
+}) {
+  return (
+    <View style={[
+      styles.legendChip,
+      kind === "realWorld" ? styles.legendChipBlue : styles.legendChipBrown,
+    ]}>
+      <Text style={[
+        styles.legendMarker,
+        kind === "realWorld" ? styles.legendMarkerBlue : styles.legendMarkerBrown,
+        kind === "inBook" && styles.legendMarkerBold,
+      ]}>{marker}</Text>
+      <Text style={[
+        styles.legendLabel,
+        kind === "realWorld" ? styles.legendLabelBlue : styles.legendLabelBrown,
+      ]}>{label}</Text>
+    </View>
+  );
+}
+
+function ReaderTab({ icon, label, active = false }: { icon: string; label: string; active?: boolean }) {
+  return (
+    <View style={styles.readerTab}>
+      <Text style={[styles.readerTabIcon, active && styles.readerTabActive]}>{icon}</Text>
+      <Text style={[styles.readerTabLabel, active && styles.readerTabActive]}>{label}</Text>
+    </View>
   );
 }
 
@@ -196,37 +271,458 @@ function segmentStyle(segment: AnnotatedTextSegment) {
   }
 }
 
+function AnnotationSegmentText({
+  segment,
+  vocab,
+  inBookRefs,
+  realWorldRefs,
+  onSelectVocab,
+  onSelectReference,
+}: {
+  segment: AnnotatedTextSegment;
+  vocab: VocabItem[];
+  inBookRefs: InBookRef[];
+  realWorldRefs: RealWorldRef[];
+  onSelectVocab: (item: VocabItem, anchor: PopoverAnchor) => void;
+  onSelectReference: (selection: ReferenceSelection) => void;
+}) {
+  const textRef = useRef<Text>(null);
+
+  function handlePress(event: GestureResponderEvent) {
+    if (segment.annotationIndex === null) return;
+
+    if (segment.type === "vocab") {
+      const item = vocab[segment.annotationIndex];
+      if (!item) return;
+
+      const fallbackAnchor: PopoverAnchor = {
+        x: event.nativeEvent.pageX,
+        y: event.nativeEvent.pageY - 13,
+        width: 0,
+        height: 26,
+      };
+      const node = textRef.current;
+      if (!node) {
+        onSelectVocab(item, fallbackAnchor);
+        return;
+      }
+
+      node.measureInWindow((x, y, width, height) => {
+        const measuredAnchor = width > 0 && height > 0
+          ? { x, y, width, height }
+          : fallbackAnchor;
+        onSelectVocab(item, measuredAnchor);
+      });
+      return;
+    }
+
+    if (segment.type === "inBookRef") {
+      const item = inBookRefs[segment.annotationIndex];
+      if (item) onSelectReference({ type: "inBookRef", item, quote: segment.text });
+      return;
+    }
+
+    if (segment.type === "realWorldRef") {
+      const item = realWorldRefs[segment.annotationIndex];
+      if (item) onSelectReference({ type: "realWorldRef", item, quote: segment.text });
+    }
+  }
+
+  return (
+    <Text
+      ref={textRef}
+      style={segmentStyle(segment)}
+      suppressHighlighting={segment.type !== "plain"}
+      onPress={handlePress}
+    >
+      {segment.text}
+    </Text>
+  );
+}
+
+function VocabPopover({
+  selection,
+  onDismiss,
+}: {
+  selection: VocabSelection;
+  onDismiss: () => void;
+}) {
+  const item = selection?.item ?? null;
+  const [cardHeight, setCardHeight] = useState(230);
+  const viewport = Dimensions.get("window");
+  const layout = selection
+    ? getPopoverLayout(selection.anchor, viewport, { height: cardHeight })
+    : null;
+
+  useEffect(() => {
+    setCardHeight(230);
+  }, [item]);
+
+  return (
+    <Modal
+      transparent
+      visible={selection !== null}
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      onRequestClose={onDismiss}
+    >
+      <View style={styles.modalOverlay}>
+      <Pressable style={styles.popoverBackdrop} onPress={onDismiss}>
+        <Pressable style={[
+          styles.dictionaryCard,
+          layout && { width: layout.width, left: layout.left, top: layout.top },
+        ]}
+        onLayout={(event) => {
+          const measuredHeight = event.nativeEvent.layout.height;
+          if (Math.abs(measuredHeight - cardHeight) > 0.5) setCardHeight(measuredHeight);
+        }}>
+          {layout && (
+            <View
+              style={[
+                styles.popoverPointer,
+                {
+                  left: layout.arrowLeft,
+                  top: layout.placement === "below" ? -9 : undefined,
+                  bottom: layout.placement === "below" ? undefined : -9,
+                },
+                layout.placement === "below"
+                  ? styles.popoverPointerBelow
+                  : styles.popoverPointerAbove,
+              ]}
+            />
+          )}
+          <ImageBackground
+            source={paperTexture}
+            style={styles.dictionarySurface}
+            imageStyle={styles.dictionarySurfaceTexture}
+            resizeMode="cover"
+          >
+          {item && (
+            <>
+              <View style={styles.dictionaryHeader}>
+                <View style={styles.dictionaryHeading}>
+                  <Text style={styles.dictionaryTitle}>Vocabulary</Text>
+                  <Text style={styles.dictionaryTerm}>{item.term}</Text>
+                  <Text style={styles.dictionaryPos}>{item.pos}</Text>
+                </View>
+                <TouchableOpacity style={styles.dictionaryCloseButton} onPress={onDismiss}>
+                  <Text style={styles.dictionaryCloseText}>×</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.dictionaryDefinition}>{item.definition}</Text>
+              <View style={styles.dictionaryExampleCard}>
+                <Text style={styles.dictionaryExample}>“{item.example}”</Text>
+              </View>
+              <View style={styles.dictionaryTags}>
+                <View style={styles.dictionaryTag}>
+                  <Text style={styles.dictionaryTagText}>{item.pos}</Text>
+                </View>
+                <View style={styles.dictionaryTag}>
+                  <Text style={styles.dictionaryTagText}>contextual meaning</Text>
+                </View>
+              </View>
+            </>
+          )}
+          </ImageBackground>
+        </Pressable>
+      </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
+function ReferenceSheet({
+  selection,
+  blurTarget,
+  onDismiss,
+}: {
+  selection: ReferenceSelection;
+  blurTarget: RefObject<View | null>;
+  onDismiss: () => void;
+}) {
+  const item = selection?.item ?? null;
+  const isRealWorld = selection?.type === "realWorldRef";
+  const title = isRealWorld ? "Real-world Reference" : "In-book Context";
+  const sheetTranslateY = useRef(new Animated.Value(500)).current;
+
+  useEffect(() => {
+    if (!selection) return;
+    sheetTranslateY.setValue(500);
+    Animated.spring(sheetTranslateY, {
+      toValue: 0,
+      damping: 30,
+      stiffness: 290,
+      mass: 1,
+      useNativeDriver: true,
+    }).start();
+  }, [selection, sheetTranslateY]);
+
+  return (
+    <Modal
+      transparent
+      visible={selection !== null}
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      onRequestClose={onDismiss}
+    >
+      <View style={styles.modalOverlay}>
+      <ModalBlur blurTarget={blurTarget} />
+      <Pressable style={styles.sheetBackdrop} onPress={onDismiss}>
+        <Animated.View style={[
+          styles.sheetAnimatedContainer,
+          { transform: [{ translateY: sheetTranslateY }] },
+        ]}>
+        <Pressable style={styles.sheet}>
+          <ImageBackground
+            source={paperTexture}
+            style={styles.sheetSurface}
+            imageStyle={styles.sheetSurfaceTexture}
+            resizeMode="cover"
+          >
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View style={[
+              styles.sheetIcon,
+              isRealWorld ? styles.sheetIconRealWorld : styles.sheetIconInBook,
+            ]}>
+              <Text style={isRealWorld ? styles.sheetIconTextRealWorld : styles.sheetIconTextInBook}>
+                {isRealWorld ? "◎" : "B"}
+              </Text>
+            </View>
+            <View style={styles.sheetHeading}>
+              <Text style={[
+                styles.sheetTitle,
+                isRealWorld ? styles.sheetTitleRealWorld : styles.sheetTitleInBook,
+              ]}>{title}</Text>
+              {item && <Text style={styles.sheetLabel}>{item.label}</Text>}
+            </View>
+            <TouchableOpacity style={styles.sheetCloseButton} onPress={onDismiss}>
+              <Text style={styles.sheetCloseText}>×</Text>
+            </TouchableOpacity>
+          </View>
+          {item && (
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={[
+                styles.sheetQuote,
+                isRealWorld ? styles.sheetQuoteRealWorld : styles.sheetQuoteInBook,
+              ]}>
+                <Text style={isRealWorld ? styles.sheetQuoteTextRealWorld : styles.sheetQuoteTextInBook}>
+                  “{selection?.quote}”
+                </Text>
+              </View>
+              <Text style={styles.sheetBody}>{item.explanation}</Text>
+              <View style={styles.sheetInsight}>
+                <Text style={styles.sheetInsightLabel}>Context Lens</Text>
+                <Text style={styles.sheetConfidence}>
+                  Analysis confidence {Math.round(item.confidence * 100)}%
+                </Text>
+              </View>
+            </ScrollView>
+          )}
+          </ImageBackground>
+        </Pressable>
+        </Animated.View>
+      </Pressable>
+      </View>
+    </Modal>
+  );
+}
+
+function ModalBlur({ blurTarget }: { blurTarget: RefObject<View | null> }) {
+  return (
+    <BlurView
+      blurTarget={blurTarget}
+      blurMethod="dimezisBlurViewSdk31Plus"
+      intensity={6}
+      tint="default"
+      style={StyleSheet.absoluteFill}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  content: { padding: 20, paddingBottom: 48 },
-  centered: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32, backgroundColor: "#fff" },
-  muted: { marginTop: 16, fontSize: 15, color: "#666", textAlign: "center" },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#6858e9",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginTop: 22,
-    marginBottom: 6,
+  blurTarget: { flex: 1, backgroundColor: colors.paper },
+  modalOverlay: { flex: 1 },
+  readerPaper: { flex: 1 },
+  readerPaperTexture: { opacity: 0.72 },
+  readerShell: {
+    flex: 1,
+    backgroundColor: "rgba(226, 217, 207, 0.42)",
   },
-  bookTitle: { fontSize: 20, fontWeight: "700", color: "#111" },
-  confidence: { fontSize: 13, color: "#888", marginTop: 2 },
-  passageBox: { backgroundColor: "#F7F6FF", borderRadius: 12, padding: 16 },
-  passageText: { fontSize: 16, lineHeight: 26, color: "#222" },
-  vocabText: { backgroundColor: "#FFF9C4" },
-  inBookText: { textDecorationLine: "underline", textDecorationColor: "#5C6BC0" },
-  realWorldText: { fontWeight: "800" },
-  empty: { marginTop: 18, fontSize: 15, color: "#888", fontStyle: "italic" },
-  card: { borderRadius: 10, padding: 14, marginBottom: 10 },
-  vocabCard: { backgroundColor: "#FFF9C4" },
-  inBookCard: { backgroundColor: "#F0F4FF", borderLeftWidth: 3, borderLeftColor: "#5C6BC0" },
-  realWorldCard: { backgroundColor: "#F3F0FF", borderLeftWidth: 3, borderLeftColor: "#7E57C2" },
-  term: { fontSize: 16, fontWeight: "700", color: "#111", marginBottom: 4 },
-  pos: { fontSize: 13, fontWeight: "400", color: "#777", fontStyle: "italic" },
-  body: { fontSize: 14, lineHeight: 20, color: "#333" },
-  example: { fontSize: 13, color: "#555", fontStyle: "italic", marginTop: 6 },
-  confidenceSmall: { fontSize: 12, color: "#888", marginTop: 6 },
+  readerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.glass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  backButtonText: {
+    color: colors.brown,
+    fontSize: 27,
+    lineHeight: 28,
+    fontWeight: "300",
+    marginTop: -2,
+  },
+  readerHeading: { flex: 1, minWidth: 0 },
+  readerEyebrow: {
+    color: colors.brown,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: "700",
+    letterSpacing: 1.35,
+    textTransform: "uppercase",
+  },
+  readerByline: {
+    marginTop: 2,
+    color: colors.ink,
+    fontSize: 14,
+    lineHeight: 18,
+    fontFamily: typography.reading,
+    fontWeight: "600",
+  },
+  insightPill: {
+    height: 31,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: radii.pill,
+    backgroundColor: colors.glass,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  insightDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.brown,
+  },
+  insightPillText: {
+    color: colors.brownDeep,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  legendScroll: { flexGrow: 0 },
+  legendContent: {
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  legendChip: {
+    height: 30,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    borderRadius: radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  legendChipBrown: {
+    backgroundColor: colors.brownWash,
+    borderColor: "rgba(118, 82, 56, 0.22)",
+  },
+  legendChipBlue: {
+    backgroundColor: colors.blueWash,
+    borderColor: "rgba(101, 122, 140, 0.24)",
+  },
+  legendMarker: { fontSize: 10, lineHeight: 13 },
+  legendMarkerBrown: { color: colors.brown },
+  legendMarkerBlue: {
+    color: colors.blue,
+    textDecorationLine: "underline",
+    textDecorationStyle: "dotted",
+  },
+  legendMarkerBold: { fontWeight: "800" },
+  legendLabel: { fontSize: 10, fontWeight: "600" },
+  legendLabelBrown: { color: colors.brown },
+  legendLabelBlue: { color: colors.blue },
+  readerDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.line,
+  },
+  readerScroll: { flex: 1 },
+  readerContent: {
+    paddingHorizontal: 20,
+    paddingTop: 15,
+    paddingBottom: spacing.xl,
+  },
+  passageText: {
+    fontSize: 17,
+    lineHeight: 28,
+    color: colors.ink,
+    fontFamily: typography.reading,
+  },
+  vocabText: {
+    backgroundColor: colors.amberWash,
+    color: colors.ink,
+  },
+  inBookText: { fontWeight: "800", color: colors.brownDeep },
+  realWorldText: {
+    color: colors.ink,
+    textDecorationLine: "underline",
+    textDecorationStyle: "dotted",
+    textDecorationColor: colors.blue,
+  },
+  empty: {
+    marginTop: spacing.lg,
+    fontSize: 14,
+    color: colors.inkSoft,
+    fontStyle: "italic",
+  },
+  readerTabBar: {
+    minHeight: 62,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+    backgroundColor: colors.glass,
+  },
+  readerTab: {
+    width: 82,
+    alignItems: "center",
+    gap: 2,
+  },
+  readerTabIcon: {
+    color: colors.inkFaint,
+    fontSize: 19,
+    lineHeight: 22,
+  },
+  readerTabLabel: {
+    color: colors.inkFaint,
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  readerTabActive: { color: colors.brownDeep },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 32,
+    backgroundColor: colors.paper,
+  },
+  muted: { marginTop: 16, fontSize: 15, color: colors.inkSoft, textAlign: "center" },
   errorBanner: {
     width: "100%",
     padding: 14,
@@ -248,7 +744,7 @@ const styles = StyleSheet.create({
   meta: { fontSize: 12, color: "#999", fontFamily: "Courier" },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    backgroundColor: "transparent",
     justifyContent: "center",
     padding: 24,
   },
@@ -295,5 +791,310 @@ const styles = StyleSheet.create({
   modalPrimaryText: {
     color: "#fff",
     fontWeight: "700",
+  },
+  popoverBackdrop: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  dictionaryCard: {
+    position: "absolute",
+    borderRadius: radii.large,
+    backgroundColor: colors.glassStrong,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(86, 57, 37, 0.24)",
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.24,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 12,
+  },
+  dictionarySurface: {
+    overflow: "hidden",
+    borderRadius: radii.large,
+    paddingTop: 18,
+    paddingHorizontal: 18,
+    paddingBottom: 16,
+    backgroundColor: "rgba(249, 245, 239, 0.84)",
+  },
+  dictionarySurfaceTexture: {
+    opacity: 0.38,
+    borderRadius: radii.large,
+  },
+  popoverPointer: {
+    position: "absolute",
+    width: 18,
+    height: 18,
+    backgroundColor: "rgba(246, 240, 232, 0.98)",
+    transform: [{ rotate: "45deg" }],
+  },
+  popoverPointerBelow: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(86, 57, 37, 0.24)",
+  },
+  popoverPointerAbove: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(86, 57, 37, 0.24)",
+  },
+  dictionaryHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 10,
+  },
+  dictionaryHeading: {
+    flex: 1,
+  },
+  dictionaryTitle: {
+    color: colors.brown,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: "600",
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    marginBottom: 3,
+  },
+  dictionaryTerm: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "700",
+    color: colors.ink,
+  },
+  dictionaryPos: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "400",
+    color: colors.inkFaint,
+    fontStyle: "italic",
+  },
+  dictionaryCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.brownWash,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  dictionaryCloseText: {
+    color: colors.brown,
+    fontSize: 19,
+    lineHeight: 21,
+  },
+  dictionaryDefinition: {
+    fontSize: 13,
+    lineHeight: 21,
+    color: colors.inkSoft,
+    marginBottom: 10,
+  },
+  dictionaryExampleCard: {
+    borderRadius: 13,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: "rgba(118, 82, 56, 0.08)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  dictionaryExample: {
+    fontSize: 12,
+    lineHeight: 19,
+    color: colors.brown,
+    fontFamily: typography.reading,
+    fontStyle: "italic",
+  },
+  dictionaryTags: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  dictionaryTag: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: colors.brownWash,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  dictionaryTagText: {
+    fontSize: 11,
+    color: colors.brown,
+  },
+  sheetBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "transparent",
+  },
+  sheetAnimatedContainer: {
+    width: "100%",
+    maxHeight: "82%",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    width: "100%",
+    maxHeight: "100%",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 0,
+    borderColor: "rgba(86, 57, 37, 0.22)",
+    backgroundColor: colors.glassStrong,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 12,
+  },
+  sheetSurface: {
+    maxHeight: "100%",
+    overflow: "hidden",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 12,
+    paddingBottom: 38,
+    backgroundColor: "rgba(249, 245, 239, 0.88)",
+  },
+  sheetSurfaceTexture: {
+    opacity: 0.42,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 36,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: "rgba(86, 57, 37, 0.32)",
+    marginBottom: 14,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  sheetIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  sheetIconRealWorld: {
+    backgroundColor: colors.blueWash,
+    borderColor: "rgba(101, 122, 140, 0.26)",
+  },
+  sheetIconInBook: {
+    backgroundColor: colors.brownWash,
+    borderColor: colors.line,
+  },
+  sheetIconTextRealWorld: {
+    color: colors.blue,
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  sheetIconTextInBook: {
+    color: colors.brown,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  sheetHeading: {
+    flex: 1,
+  },
+  sheetTitle: {
+    fontSize: 10,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 1.4,
+    marginBottom: 3,
+  },
+  sheetTitleRealWorld: { color: colors.blue },
+  sheetTitleInBook: { color: colors.brown },
+  sheetLabel: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: "700",
+    color: colors.ink,
+  },
+  sheetCloseButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.brownWash,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  sheetCloseText: {
+    color: colors.brown,
+    fontSize: 19,
+    lineHeight: 21,
+  },
+  sheetScroll: {
+    flexGrow: 0,
+  },
+  sheetContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 2,
+  },
+  sheetQuote: {
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 16,
+  },
+  sheetQuoteRealWorld: {
+    backgroundColor: colors.blueWash,
+    borderColor: "rgba(101, 122, 140, 0.20)",
+  },
+  sheetQuoteInBook: {
+    backgroundColor: colors.brownWash,
+    borderColor: colors.line,
+  },
+  sheetQuoteTextRealWorld: {
+    color: colors.blue,
+    fontSize: 13,
+    lineHeight: 21,
+    fontStyle: "italic",
+    fontFamily: typography.reading,
+  },
+  sheetQuoteTextInBook: {
+    color: colors.brown,
+    fontSize: 13,
+    lineHeight: 21,
+    fontStyle: "italic",
+    fontFamily: typography.reading,
+  },
+  sheetBody: {
+    fontSize: 13,
+    lineHeight: 21,
+    color: colors.inkSoft,
+    marginBottom: 16,
+  },
+  sheetInsight: {
+    borderRadius: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+    backgroundColor: "rgba(118, 82, 56, 0.07)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  sheetInsightLabel: {
+    color: colors.brown,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    marginBottom: 3,
+  },
+  sheetConfidence: {
+    fontSize: 12,
+    color: colors.inkFaint,
   },
 });

@@ -6,6 +6,8 @@ export interface AnnotatedTextSegment {
   text: string;
   type: AnnotationType;
   annotationIndex: number | null;
+  start: number;
+  end: number;
 }
 
 type RangeCandidate = {
@@ -35,7 +37,7 @@ export function renderAnnotatedText(
   ]);
 
   if (accepted.length === 0) {
-    return text.length > 0 ? [{ text, type: "plain", annotationIndex: null }] : [];
+    return text.length > 0 ? [{ text, type: "plain", annotationIndex: null, start: 0, end: text.length }] : [];
   }
 
   const segments: AnnotatedTextSegment[] = [];
@@ -43,18 +45,26 @@ export function renderAnnotatedText(
 
   for (const range of accepted.sort((a, b) => a.start - b.start)) {
     if (cursor < range.start) {
-      segments.push({ text: text.slice(cursor, range.start), type: "plain", annotationIndex: null });
+      segments.push({
+        text: text.slice(cursor, range.start),
+        type: "plain",
+        annotationIndex: null,
+        start: cursor,
+        end: range.start,
+      });
     }
     segments.push({
       text: text.slice(range.start, range.end),
       type: range.type,
       annotationIndex: range.annotationIndex,
+      start: range.start,
+      end: range.end,
     });
     cursor = range.end;
   }
 
   if (cursor < text.length) {
-    segments.push({ text: text.slice(cursor), type: "plain", annotationIndex: null });
+    segments.push({ text: text.slice(cursor), type: "plain", annotationIndex: null, start: cursor, end: text.length });
   }
 
   return segments.filter((segment) => segment.text.length > 0);

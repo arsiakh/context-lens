@@ -8,6 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test:reader": "tsx src/features/reader/renderAnnotatedText.test.ts",
+    "test:popover": "tsx src/features/reader/getPopoverLayout.test.ts",
     "postinstall": "patch-package"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "@react-navigation/native-stack": "^7.14.6",
     "@supabase/supabase-js": "^2.106.2",
     "expo": "~55.0.8",
+    "expo-blur": "~55.0.14",
     "expo-camera": "~55.0.19",
     "expo-image-picker": "~55.0.20",
     "expo-secure-store": "~55.0.14",
