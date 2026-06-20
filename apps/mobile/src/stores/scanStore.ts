@@ -44,6 +44,7 @@ interface ScanState {
   setBookTitleHint: (title: string) => void;
   setAuthorHint: (author: string) => void;
   confirmBookTitle: (title: string) => void;
+  loadPreviewAnalysis: (response: AnalyzeResponse) => void;
   analyze: () => Promise<void>;
   reset: () => void;
 }
@@ -78,6 +79,18 @@ export const useScanStore = create<ScanState>((set, get) => ({
       needsBookTitleConfirmation: false,
     });
   },
+  loadPreviewAnalysis: (response) =>
+    set({
+      status: "extracted",
+      rawText: response.normalizedText,
+      normalizedText: response.normalizedText,
+      ocrError: null,
+      analyzeStatus: "done",
+      analyzeResponse: response,
+      analyzeError: null,
+      confirmedBookTitle: response.bookInference.title,
+      needsBookTitleConfirmation: false,
+    }),
 
   // Sends the normalized passage to the backend and stores the annotated result.
   // Screens read analyzeStatus/analyzeResponse/analyzeError and render accordingly.

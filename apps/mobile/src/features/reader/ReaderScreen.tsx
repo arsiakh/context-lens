@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import type { GestureResponderEvent } from "react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useScanStore } from "../../stores/scanStore";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
 import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
@@ -103,28 +103,15 @@ export default function ReaderScreen() {
       <View style={styles.passageBox}>
         <Text style={styles.passageText}>
           {segments.map((segment, index) => (
-            <Text
+            <AnnotationSegmentText
               key={`${segment.type}-${index}`}
-              style={segmentStyle(segment)}
-              suppressHighlighting={segment.type !== "plain"}
-              onPress={(event) => {
-                if (segment.annotationIndex === null) return;
-                if (segment.type === "vocab") {
-                  const item = vocab[segment.annotationIndex];
-                  if (item) setSelectedVocab(toVocabSelection(item, event));
-                }
-                if (segment.type === "inBookRef") {
-                  const item = inBookRefs[segment.annotationIndex];
-                  if (item) setSelectedReference({ type: "inBookRef", item });
-                }
-                if (segment.type === "realWorldRef") {
-                  const item = realWorldRefs[segment.annotationIndex];
-                  if (item) setSelectedReference({ type: "realWorldRef", item });
-                }
-              }}
-            >
-              {segment.text}
-            </Text>
+              segment={segment}
+              vocab={vocab}
+              inBookRefs={inBookRefs}
+              realWorldRefs={realWorldRefs}
+              onSelectVocab={(item, anchor) => setSelectedVocab({ item, anchor })}
+              onSelectReference={setSelectedReference}
+            />
           ))}
         </Text>
       </View>
@@ -220,18 +207,6 @@ export default function ReaderScreen() {
   );
 }
 
-function toVocabSelection(item: VocabItem, event: GestureResponderEvent): VocabSelection {
-  return {
-    item,
-    anchor: {
-      x: event.nativeEvent.pageX,
-      y: event.nativeEvent.pageY,
-      width: 0,
-      height: 0,
-    },
-  };
-}
-
 function segmentStyle(segment: AnnotatedTextSegment) {
   switch (segment.type) {
     case "vocab":
@@ -245,6 +220,75 @@ function segmentStyle(segment: AnnotatedTextSegment) {
   }
 }
 
+function AnnotationSegmentText({
+  segment,
+  vocab,
+  inBookRefs,
+  realWorldRefs,
+  onSelectVocab,
+  onSelectReference,
+}: {
+  segment: AnnotatedTextSegment;
+  vocab: VocabItem[];
+  inBookRefs: InBookRef[];
+  realWorldRefs: RealWorldRef[];
+  onSelectVocab: (item: VocabItem, anchor: PopoverAnchor) => void;
+  onSelectReference: (selection: ReferenceSelection) => void;
+}) {
+  const textRef = useRef<Text>(null);
+
+  function handlePress(event: GestureResponderEvent) {
+    if (segment.annotationIndex === null) return;
+
+    if (segment.type === "vocab") {
+      const item = vocab[segment.annotationIndex];
+      if (!item) return;
+
+      const fallbackAnchor: PopoverAnchor = {
+        x: event.nativeEvent.pageX,
+        y: event.nativeEvent.pageY - 13,
+        width: 0,
+        height: 26,
+      };
+      const node = textRef.current;
+      if (!node) {
+        onSelectVocab(item, fallbackAnchor);
+        return;
+      }
+
+      node.measureInWindow((x, y, width, height) => {
+        const measuredAnchor = width > 0 && height > 0
+          ? { x, y, width, height }
+          : fallbackAnchor;
+        onSelectVocab(item, measuredAnchor);
+      });
+      return;
+    }
+
+    if (segment.type === "inBookRef") {
+      const item = inBookRefs[segment.annotationIndex];
+      if (item) onSelectReference({ type: "inBookRef", item });
+      return;
+    }
+
+    if (segment.type === "realWorldRef") {
+      const item = realWorldRefs[segment.annotationIndex];
+      if (item) onSelectReference({ type: "realWorldRef", item });
+    }
+  }
+
+  return (
+    <Text
+      ref={textRef}
+      style={segmentStyle(segment)}
+      suppressHighlighting={segment.type !== "plain"}
+      onPress={handlePress}
+    >
+      {segment.text}
+    </Text>
+  );
+}
+
 function VocabPopover({
   selection,
   onDismiss,
@@ -253,8 +297,15 @@ function VocabPopover({
   onDismiss: () => void;
 }) {
   const item = selection?.item ?? null;
+  const [cardHeight, setCardHeight] = useState(230);
   const viewport = Dimensions.get("window");
-  const layout = selection ? getPopoverLayout(selection.anchor, viewport) : null;
+  const layout = selection
+    ? getPopoverLayout(selection.anchor, viewport, { height: cardHeight })
+    : null;
+
+  useEffect(() => {
+    setCardHeight(230);
+  }, [item]);
 
   return (
     <Modal transparent visible={selection !== null} animationType="fade" onRequestClose={onDismiss}>
@@ -262,15 +313,19 @@ function VocabPopover({
         <Pressable style={[
           styles.dictionaryCard,
           layout && { width: layout.width, left: layout.left, top: layout.top },
-        ]}>
+        ]}
+        onLayout={(event) => {
+          const measuredHeight = event.nativeEvent.layout.height;
+          if (Math.abs(measuredHeight - cardHeight) > 0.5) setCardHeight(measuredHeight);
+        }}>
           {layout && (
             <View
               style={[
                 styles.popoverPointer,
                 {
                   left: layout.arrowLeft,
-                  top: layout.placement === "below" ? -8 : undefined,
-                  bottom: layout.placement === "below" ? undefined : -8,
+                  top: layout.placement === "below" ? -9 : undefined,
+                  bottom: layout.placement === "below" ? undefined : -9,
                 },
                 layout.placement === "below"
                   ? styles.popoverPointerBelow

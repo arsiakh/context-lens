@@ -19,6 +19,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useScanStore } from "../../stores/scanStore";
 import { extractAndNormalize } from "../../services/ocr";
+import { readerPreviewFixture } from "../reader/readerPreviewFixture";
 
 type ScanNavProp = NativeStackNavigationProp<RootStackParamList, "Scan">;
 
@@ -38,6 +39,7 @@ export default function ScanScreen() {
     setOcrError,
     setBookTitleHint,
     setAuthorHint,
+    loadPreviewAnalysis,
     analyze,
     reset,
   } = useScanStore();
@@ -192,6 +194,18 @@ export default function ScanScreen() {
       <TouchableOpacity style={styles.captureButton} onPress={handleCapture}>
         <Text style={styles.captureButtonText}>Capture Book Page</Text>
       </TouchableOpacity>
+      {__DEV__ && (
+        <TouchableOpacity
+          style={styles.previewButton}
+          onPress={() => {
+            loadPreviewAnalysis(readerPreviewFixture);
+            navigation.navigate("Reader");
+          }}
+        >
+          <Text style={styles.previewButtonText}>Preview Reader UI</Text>
+          <Text style={styles.previewButtonHint}>No camera or API required</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -228,6 +242,22 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
     fontSize: 17,
+  },
+  previewButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: "center",
+  },
+  previewButtonText: {
+    color: "#6858e9",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  previewButtonHint: {
+    color: "#888",
+    fontSize: 12,
+    marginTop: 2,
   },
   permissionTitle: {
     fontSize: 20,

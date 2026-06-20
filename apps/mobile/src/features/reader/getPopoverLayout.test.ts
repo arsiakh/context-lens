@@ -13,19 +13,33 @@ function check(name: string, condition: boolean) {
   }
 }
 
+function closeTo(actual: number, expected: number, tolerance = 0.001) {
+  return Math.abs(actual - expected) <= tolerance;
+}
+
 const viewport = { width: 375, height: 812 };
+const arrowTipExtent = 18 / Math.SQRT2;
+const anchorClearance = 12;
 
 {
-  const layout = getPopoverLayout({ x: 160, y: 100, width: 40, height: 24 }, viewport);
+  const anchor = { x: 160, y: 100, width: 40, height: 24 };
+  const layout = getPopoverLayout(anchor, viewport);
   check("places the card below when enough room remains", layout.placement === "below");
-  check("positions a below card after the anchor", layout.top === 136);
+  check(
+    "keeps the lower arrow tip clear of the annotation",
+    closeTo(layout.top - arrowTipExtent, anchor.y + anchor.height + anchorClearance),
+  );
   check("points the arrow at the anchor center", layout.arrowLeft === 157);
 }
 
 {
-  const layout = getPopoverLayout({ x: 160, y: 700, width: 40, height: 24 }, viewport);
+  const anchor = { x: 160, y: 700, width: 40, height: 24 };
+  const layout = getPopoverLayout(anchor, viewport);
   check("places the card above near the bottom", layout.placement === "above");
-  check("positions an above card before the anchor", layout.top === 458);
+  check(
+    "keeps the upper arrow tip clear of the annotation",
+    closeTo(layout.top + 230 + arrowTipExtent, anchor.y - anchorClearance),
+  );
 }
 
 {

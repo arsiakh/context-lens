@@ -43,6 +43,11 @@ export function getPopoverLayout(
   const gap = options.gap ?? 12;
   const arrowSize = options.arrowSize ?? 18;
   const cornerClearance = options.cornerClearance ?? 18;
+  // A rotated square extends half of its diagonal beyond the card edge.
+  // Include that footprint so the visible arrow tip, rather than merely the
+  // card edge, keeps `gap` points of clearance from the annotation.
+  const arrowTipExtent = arrowSize / Math.SQRT2;
+  const connectorOffset = gap + arrowTipExtent;
 
   const width = Math.max(0, Math.min(maxWidth, viewport.width - margin * 2));
   const maxLeft = Math.max(margin, viewport.width - width - margin);
@@ -53,7 +58,7 @@ export function getPopoverLayout(
   const anchorBottom = anchor.y + anchor.height;
   const spaceAbove = anchorTop - margin;
   const spaceBelow = viewport.height - margin - anchorBottom;
-  const requiredSpace = height + gap;
+  const requiredSpace = height + connectorOffset;
   const placement =
     spaceBelow >= requiredSpace || (spaceAbove < requiredSpace && spaceBelow >= spaceAbove)
       ? "below"
@@ -61,7 +66,9 @@ export function getPopoverLayout(
 
   const left = clamp(anchorCenterX - width / 2, margin, maxLeft);
   const desiredTop =
-    placement === "below" ? anchorBottom + gap : anchorTop - height - gap;
+    placement === "below"
+      ? anchorBottom + connectorOffset
+      : anchorTop - height - connectorOffset;
   const top = clamp(desiredTop, margin, maxTop);
 
   const minArrowLeft = cornerClearance;
