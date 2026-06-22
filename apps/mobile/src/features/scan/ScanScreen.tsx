@@ -75,8 +75,6 @@ export default function ScanScreen() {
     try {
       const { normalizedText, rawText } = await extractAndNormalize(uri);
       setExtracted(rawText, normalizedText);
-      console.log("[OCR] ───── RAW TEXT ─────\n" + rawText);
-      console.log("[OCR] ───── NORMALIZED ─────\n" + normalizedText);
     } catch (e: unknown) {
       const msg = (e as { message?: string }).message ?? "Text extraction failed.";
       setOcrError(msg);
