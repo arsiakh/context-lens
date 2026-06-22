@@ -96,8 +96,8 @@ export const useScanStore = create<ScanState>((set, get) => ({
   // Sends the normalized passage to the backend and stores the annotated result.
   // Screens read analyzeStatus/analyzeResponse/analyzeError and render accordingly.
   analyze: async () => {
-    const { normalizedText: text, bookTitleHint, authorHint } = get();
-    if (!text) return;
+    const { normalizedText: text, bookTitleHint, authorHint, analyzeStatus } = get();
+    if (!text || analyzeStatus === "analyzing") return;
     set({ analyzeStatus: "analyzing", analyzeError: null, needsBookTitleConfirmation: false });
     try {
       const cleanedHint = bookTitleHint.trim();

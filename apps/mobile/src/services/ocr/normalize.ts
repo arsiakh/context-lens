@@ -1,6 +1,6 @@
 // Maximum character length passed to the API.
 // If OCR produces more, we truncate to the nearest sentence boundary before this limit.
-const MAX_CHARS = 2000;
+export const MAX_CHARS = 2000;
 
 export function normalize(input: string): string {
   return input

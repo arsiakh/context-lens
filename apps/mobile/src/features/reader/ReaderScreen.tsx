@@ -5,6 +5,7 @@ import {
   ImageBackground,
   Pressable,
   Modal,
+  PanResponder,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,8 +15,9 @@ import {
 } from "react-native";
 import type { GestureResponderEvent } from "react-native";
 import type { RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlurTargetView, BlurView } from "expo-blur";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -24,6 +26,8 @@ import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
 import { renderAnnotatedText, type AnnotatedTextSegment } from "./renderAnnotatedText";
+import { persistHighlightGuideDismissal, shouldShowHighlightGuide } from "./highlightGuideStorage";
+import { shouldDismissReferenceSheet } from "./referenceSheetGesture";
 
 const paperTexture = require("../../../assets/textures/paper-grain.png");
 
@@ -53,6 +57,8 @@ export default function ReaderScreen() {
   const [titleDraft, setTitleDraft] = useState("");
   const [selectedVocab, setSelectedVocab] = useState<VocabSelection>(null);
   const [selectedReference, setSelectedReference] = useState<ReferenceSelection>(null);
+  const [showHighlightGuide, setShowHighlightGuide] = useState(false);
+  const highlightGuideChecked = useRef(false);
   const blurTargetRef = useRef<View>(null);
 
   useEffect(() => {
@@ -60,6 +66,25 @@ export default function ReaderScreen() {
       setTitleDraft(analyzeResponse?.bookInference.title ?? "");
     }
   }, [analyzeResponse?.bookInference.title, needsBookTitleConfirmation]);
+
+  useEffect(() => {
+    if (analyzeStatus !== "done" || !analyzeResponse || highlightGuideChecked.current) return;
+
+    highlightGuideChecked.current = true;
+    let active = true;
+    void shouldShowHighlightGuide(AsyncStorage).then((shouldShow) => {
+      if (active) setShowHighlightGuide(shouldShow);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [analyzeResponse, analyzeStatus]);
+
+  function dismissHighlightGuide() {
+    setShowHighlightGuide(false);
+    void persistHighlightGuideDismissal(AsyncStorage);
+  }
 
   if (analyzeStatus === "analyzing") {
     return (
@@ -72,17 +97,33 @@ export default function ReaderScreen() {
 
   if (analyzeStatus === "error") {
     return (
-      <View style={styles.centered}>
+      <SafeAreaView style={styles.stateShell} edges={["top", "bottom"]}>
+        <TouchableOpacity
+          accessibilityLabel="Back"
+          accessibilityRole="button"
+          style={styles.stateBackButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>‹</Text>
+        </TouchableOpacity>
+        <View style={styles.centered}>
         <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>{analyzeError?.message ?? "Analysis failed."}</Text>
+          <Text style={styles.errorTitle}>Analysis failed</Text>
+          <Text style={styles.errorText}>{analyzeError?.message ?? "Something went wrong. Please try again."}</Text>
           {analyzeError?.retryAfterSeconds != null && (
             <Text style={styles.errorSub}>Try again in {analyzeError.retryAfterSeconds}s.</Text>
           )}
         </View>
-        <TouchableOpacity style={styles.retryButton} onPress={() => void analyze()}>
+        <TouchableOpacity
+          accessibilityLabel="Retry analysis"
+          accessibilityRole="button"
+          style={styles.retryButton}
+          onPress={() => void analyze()}
+        >
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
-      </View>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -163,7 +204,7 @@ export default function ReaderScreen() {
           ))}
         </Text>
         {totalAnnotations === 0 && (
-          <Text style={styles.empty}>No highlights found for this passage.</Text>
+          <Text style={styles.empty}>No highlights found.</Text>
         )}
       </ScrollView>
 
@@ -218,7 +259,42 @@ export default function ReaderScreen() {
       blurTarget={blurTargetRef}
       onDismiss={() => setSelectedReference(null)}
     />
+    <HighlightGuide
+      visible={showHighlightGuide && !needsBookTitleConfirmation}
+      onDismiss={dismissHighlightGuide}
+    />
     </>
+  );
+}
+
+function HighlightGuide({ visible, onDismiss }: { visible: boolean; onDismiss: () => void }) {
+  return (
+    <Modal
+      transparent
+      visible={visible}
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      onRequestClose={onDismiss}
+    >
+      <Pressable
+        accessibilityLabel="Highlight guide. Tap to dismiss."
+        accessibilityRole="button"
+        style={styles.guideBackdrop}
+        onPress={onDismiss}
+      >
+        <View style={styles.guideCard} pointerEvents="none">
+          <Text style={styles.guideEyebrow}>QUICK GUIDE</Text>
+          <Text style={styles.guideTitle}>Three ways to explore</Text>
+          <View style={styles.guideItems}>
+            <LegendChip marker="H" label="Vocabulary" kind="vocab" />
+            <LegendChip marker="U" label="Real-world" kind="realWorld" />
+            <LegendChip marker="B" label="In-book" kind="inBook" />
+          </View>
+          <Text style={styles.guideBody}>Tap a highlighted passage to see its definition or context.</Text>
+          <Text style={styles.guideDismiss}>Tap anywhere to continue</Text>
+        </View>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -445,6 +521,47 @@ function ReferenceSheet({
   const title = isRealWorld ? "Real-world Reference" : "In-book Context";
   const sheetTranslateY = useRef(new Animated.Value(500)).current;
 
+  const closeSheet = useCallback(() => {
+    Animated.timing(sheetTranslateY, {
+      toValue: 500,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) onDismiss();
+    });
+  }, [onDismiss, sheetTranslateY]);
+
+  const dragResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponderCapture: (_, gesture) => (
+      gesture.dy > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx)
+    ),
+    onPanResponderMove: (_, gesture) => {
+      sheetTranslateY.setValue(Math.max(0, gesture.dy));
+    },
+    onPanResponderRelease: (_, gesture) => {
+      if (shouldDismissReferenceSheet(gesture.dy, gesture.vy)) {
+        closeSheet();
+        return;
+      }
+      Animated.spring(sheetTranslateY, {
+        toValue: 0,
+        damping: 28,
+        stiffness: 300,
+        mass: 1,
+        useNativeDriver: true,
+      }).start();
+    },
+    onPanResponderTerminate: () => {
+      Animated.spring(sheetTranslateY, {
+        toValue: 0,
+        damping: 28,
+        stiffness: 300,
+        mass: 1,
+        useNativeDriver: true,
+      }).start();
+    },
+  }), [closeSheet, sheetTranslateY]);
+
   useEffect(() => {
     if (!selection) return;
     sheetTranslateY.setValue(500);
@@ -463,15 +580,15 @@ function ReferenceSheet({
       visible={selection !== null}
       animationType="fade"
       presentationStyle="overFullScreen"
-      onRequestClose={onDismiss}
+      onRequestClose={closeSheet}
     >
       <View style={styles.modalOverlay}>
       <ModalBlur blurTarget={blurTarget} />
-      <Pressable style={styles.sheetBackdrop} onPress={onDismiss}>
+      <Pressable style={styles.sheetBackdrop} onPress={closeSheet}>
         <Animated.View style={[
           styles.sheetAnimatedContainer,
           { transform: [{ translateY: sheetTranslateY }] },
-        ]}>
+        ]} {...dragResponder.panHandlers}>
         <Pressable style={styles.sheet}>
           <ImageBackground
             source={paperTexture}
@@ -479,7 +596,13 @@ function ReferenceSheet({
             imageStyle={styles.sheetSurfaceTexture}
             resizeMode="cover"
           >
-          <View style={styles.sheetHandle} />
+          <View
+            accessibilityLabel="Drag down to close"
+            accessibilityRole="adjustable"
+            style={styles.sheetDragTarget}
+          >
+            <View style={styles.sheetHandle} />
+          </View>
           <View style={styles.sheetHeader}>
             <View style={[
               styles.sheetIcon,
@@ -496,7 +619,7 @@ function ReferenceSheet({
               ]}>{title}</Text>
               {item && <Text style={styles.sheetLabel}>{item.label}</Text>}
             </View>
-            <TouchableOpacity style={styles.sheetCloseButton} onPress={onDismiss}>
+            <TouchableOpacity style={styles.sheetCloseButton} onPress={closeSheet}>
               <Text style={styles.sheetCloseText}>×</Text>
             </TouchableOpacity>
           </View>
@@ -546,6 +669,18 @@ function ModalBlur({ blurTarget }: { blurTarget: RefObject<View | null> }) {
 
 const styles = StyleSheet.create({
   blurTarget: { flex: 1, backgroundColor: colors.paper },
+  stateShell: { flex: 1, backgroundColor: colors.paper },
+  stateBackButton: {
+    position: "absolute",
+    zIndex: 1,
+    top: spacing.lg,
+    left: spacing.lg,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   modalOverlay: { flex: 1 },
   readerPaper: { flex: 1 },
   readerPaperTexture: { opacity: 0.72 },
@@ -733,6 +868,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   errorText: { color: "#C62828", fontSize: 14, fontWeight: "500" },
+  errorTitle: { color: "#8E1B1B", fontSize: 20, fontWeight: "700", marginBottom: 6 },
   errorSub: { color: "#C62828", fontSize: 13, marginTop: 4 },
   retryButton: {
     paddingVertical: 12,
@@ -741,6 +877,57 @@ const styles = StyleSheet.create({
     backgroundColor: "#6858e9",
   },
   retryText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+  guideBackdrop: {
+    flex: 1,
+    justifyContent: "flex-start",
+    paddingHorizontal: spacing.lg,
+    paddingTop: 150,
+    backgroundColor: "rgba(37, 28, 22, 0.32)",
+  },
+  guideCard: {
+    padding: spacing.lg,
+    borderRadius: radii.large,
+    backgroundColor: colors.paper,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  guideEyebrow: {
+    color: colors.brown,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.3,
+  },
+  guideTitle: {
+    marginTop: 4,
+    color: colors.ink,
+    fontFamily: typography.reading,
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "700",
+  },
+  guideItems: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: spacing.md,
+  },
+  guideBody: {
+    marginTop: spacing.md,
+    color: colors.ink,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  guideDismiss: {
+    marginTop: spacing.md,
+    color: colors.inkSoft,
+    fontSize: 12,
+    fontWeight: "600",
+  },
   meta: { fontSize: 12, color: "#999", fontFamily: "Courier" },
   modalBackdrop: {
     flex: 1,
@@ -968,7 +1155,13 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 999,
     backgroundColor: "rgba(86, 57, 37, 0.32)",
-    marginBottom: 14,
+  },
+  sheetDragTarget: {
+    height: 36,
+    marginTop: -12,
+    marginHorizontal: -18,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sheetHeader: {
     flexDirection: "row",

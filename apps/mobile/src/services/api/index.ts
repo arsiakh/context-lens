@@ -9,12 +9,14 @@ import type { AnalyzeResponse } from "../../types";
 // typed errors the UI can render with a specific, actionable message.
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "";
+export const ANALYZE_TIMEOUT_MS = 45_000;
 
 export type AnalyzeErrorKind =
   | "unauthorized"
   | "rate_limited"
   | "invalid_input"
   | "model_failure"
+  | "timeout"
   | "network"
   | "server";
 
@@ -46,6 +48,8 @@ export async function analyzePassage(text: string, hint: AnalyzePassageHint = {}
   }
 
   let res: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
   try {
     res = await fetch(`${API_URL}/api/analyze`, {
       method: "POST",
@@ -60,9 +64,15 @@ export async function analyzePassage(text: string, hint: AnalyzePassageHint = {}
           author: hint.author?.trim() || null,
         },
       }),
+      signal: controller.signal,
     });
   } catch {
+    if (controller.signal.aborted) {
+      throw new AnalyzeError("timeout", "Analysis took too long. Please try again.");
+    }
     throw new AnalyzeError("network", "Couldn't reach the server. Check your connection and try again.");
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (res.ok) {
