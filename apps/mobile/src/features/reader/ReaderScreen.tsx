@@ -20,8 +20,12 @@ import { BlurTargetView, BlurView } from "expo-blur";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useScanStore } from "../../stores/scanStore";
+import { useAuthStore } from "../../stores/authStore";
+import type { RootStackParamList } from "../../navigation/RootNavigator";
+import { saveNote, SaveError } from "../../services/supabase/saveNote";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
@@ -41,6 +45,9 @@ type VocabSelection = {
   anchor: PopoverAnchor;
 } | null;
 
+type SaveStatus = "idle" | "saving" | "saved";
+type SaveToastState = { kind: "success" | "error"; message: string } | null;
+
 export default function ReaderScreen() {
   const {
     analyzeStatus,
@@ -53,11 +60,14 @@ export default function ReaderScreen() {
     confirmBookTitle,
     analyze,
   } = useScanStore();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const user = useAuthStore((state) => state.user);
   const [titleDraft, setTitleDraft] = useState("");
   const [selectedVocab, setSelectedVocab] = useState<VocabSelection>(null);
   const [selectedReference, setSelectedReference] = useState<ReferenceSelection>(null);
   const [showHighlightGuide, setShowHighlightGuide] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [saveToast, setSaveToast] = useState<SaveToastState>(null);
   const highlightGuideChecked = useRef(false);
   const blurTargetRef = useRef<View>(null);
 
@@ -80,6 +90,17 @@ export default function ReaderScreen() {
       active = false;
     };
   }, [analyzeResponse, analyzeStatus]);
+
+  useEffect(() => {
+    if (!saveToast) return;
+    const timer = setTimeout(() => setSaveToast(null), 6500);
+    return () => clearTimeout(timer);
+  }, [saveToast]);
+
+  useEffect(() => {
+    setSaveStatus("idle");
+    setSaveToast(null);
+  }, [analyzeResponse]);
 
   function dismissHighlightGuide() {
     setShowHighlightGuide(false);
@@ -135,11 +156,39 @@ export default function ReaderScreen() {
     );
   }
 
-  const { bookInference, vocab, inBookRefs, realWorldRefs } = analyzeResponse;
-  const text = analyzeResponse.normalizedText ?? normalizedText ?? "";
+  const response = analyzeResponse;
+  const { bookInference, vocab, inBookRefs, realWorldRefs } = response;
+  const text = response.normalizedText ?? normalizedText ?? "";
   const totalAnnotations = vocab.length + inBookRefs.length + realWorldRefs.length;
   const displayTitle = confirmedBookTitle ?? bookInference.title ?? "Unknown";
   const segments = renderAnnotatedText(text, vocab, inBookRefs, realWorldRefs);
+
+  async function handleSave() {
+    if (saveStatus !== "idle") return;
+    if (!user) {
+      setSaveToast({ kind: "error", message: "Your session expired. Sign in again before saving." });
+      return;
+    }
+
+    setSaveStatus("saving");
+    setSaveToast(null);
+    try {
+      await saveNote({
+        userId: user.id,
+        bookTitle: displayTitle,
+        passageText: text,
+        annotations: response,
+      });
+      setSaveStatus("saved");
+      setSaveToast({ kind: "success", message: "Saved to Library" });
+    } catch (error) {
+      setSaveStatus("idle");
+      setSaveToast({
+        kind: "error",
+        message: error instanceof SaveError ? error.message : "The passage could not be saved. Please try again.",
+      });
+    }
+  }
 
   return (
     <>
@@ -207,6 +256,46 @@ export default function ReaderScreen() {
           <Text style={styles.empty}>No highlights found.</Text>
         )}
       </ScrollView>
+
+      {saveToast && (
+        <View
+          accessibilityLiveRegion="polite"
+          style={[styles.saveToast, saveToast.kind === "error" && styles.saveToastError]}
+        >
+          <Text style={styles.saveToastText}>{saveToast.message}</Text>
+          {saveToast.kind === "success" && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() => navigation.navigate("Library")}
+            >
+              <Text style={styles.saveToastAction}>Go to Library</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            accessibilityLabel="Dismiss message"
+            accessibilityRole="button"
+            onPress={() => setSaveToast(null)}
+          >
+            <Text style={styles.saveToastClose}>×</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={styles.saveBar}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel={saveStatus === "saved" ? "Passage saved" : "Save passage to Library"}
+          disabled={saveStatus !== "idle" || needsBookTitleConfirmation}
+          style={[styles.saveButton, saveStatus !== "idle" && styles.saveButtonDisabled]}
+          onPress={() => void handleSave()}
+        >
+          {saveStatus === "saving" ? (
+            <ActivityIndicator size="small" color={colors.paper} />
+          ) : (
+            <Text style={styles.saveButtonText}>{saveStatus === "saved" ? "Saved ✓" : "Save passage"}</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.readerTabBar}>
         <ReaderTab icon="▣" label="Text" active />
@@ -823,6 +912,59 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.inkSoft,
     fontStyle: "italic",
+  },
+  saveBar: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.line,
+    backgroundColor: "rgba(246, 241, 234, 0.84)",
+  },
+  saveButton: {
+    minHeight: 44,
+    borderRadius: radii.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.brownDeep,
+  },
+  saveButtonDisabled: {
+    opacity: 0.58,
+  },
+  saveButtonText: {
+    color: colors.paper,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  saveToast: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+    minHeight: 48,
+    borderRadius: radii.medium,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.brownDeep,
+  },
+  saveToastError: {
+    backgroundColor: "#8E1B1B",
+  },
+  saveToastText: {
+    flex: 1,
+    color: colors.paper,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  saveToastAction: {
+    color: colors.paper,
+    fontSize: 13,
+    fontWeight: "800",
+    textDecorationLine: "underline",
+  },
+  saveToastClose: {
+    color: colors.paper,
+    fontSize: 22,
+    lineHeight: 24,
   },
   readerTabBar: {
     minHeight: 62,
