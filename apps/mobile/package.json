@@ -12,6 +12,7 @@
     "test:highlight-guide": "tsx src/features/reader/highlightGuideStorage.test.ts",
     "test:sheet-gesture": "tsx src/features/reader/referenceSheetGesture.test.ts",
     "test:ocr": "tsx src/services/ocr/normalize.test.ts && tsx src/services/ocr/timeout.test.ts",
+    "test:save": "tsx src/services/supabase/saveNoteLogic.test.ts",
     "postinstall": "patch-package"
   },
   "dependencies": {
