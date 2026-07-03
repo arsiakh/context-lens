@@ -19,8 +19,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlurTargetView, BlurView } from "expo-blur";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RouteProp } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useScanStore } from "../../stores/scanStore";
 import { useAuthStore } from "../../stores/authStore";
@@ -61,6 +62,8 @@ export default function ReaderScreen() {
     analyze,
   } = useScanStore();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, "Reader">>();
+  const savedNote = route.params?.savedNote ?? null;
   const user = useAuthStore((state) => state.user);
   const [titleDraft, setTitleDraft] = useState("");
   const [selectedVocab, setSelectedVocab] = useState<VocabSelection>(null);
@@ -72,13 +75,15 @@ export default function ReaderScreen() {
   const blurTargetRef = useRef<View>(null);
 
   useEffect(() => {
-    if (needsBookTitleConfirmation) {
+    if (!savedNote && needsBookTitleConfirmation) {
       setTitleDraft(analyzeResponse?.bookInference.title ?? "");
     }
-  }, [analyzeResponse?.bookInference.title, needsBookTitleConfirmation]);
+  }, [analyzeResponse?.bookInference.title, needsBookTitleConfirmation, savedNote]);
 
   useEffect(() => {
-    if (analyzeStatus !== "done" || !analyzeResponse || highlightGuideChecked.current) return;
+    const readerResponse = savedNote?.annotations ?? analyzeResponse;
+    const readerReady = savedNote !== null || analyzeStatus === "done";
+    if (!readerReady || !readerResponse || highlightGuideChecked.current) return;
 
     highlightGuideChecked.current = true;
     let active = true;
@@ -89,7 +94,7 @@ export default function ReaderScreen() {
     return () => {
       active = false;
     };
-  }, [analyzeResponse, analyzeStatus]);
+  }, [analyzeResponse, analyzeStatus, savedNote]);
 
   useEffect(() => {
     if (!saveToast) return;
@@ -98,16 +103,16 @@ export default function ReaderScreen() {
   }, [saveToast]);
 
   useEffect(() => {
-    setSaveStatus("idle");
+    setSaveStatus(savedNote ? "saved" : "idle");
     setSaveToast(null);
-  }, [analyzeResponse]);
+  }, [analyzeResponse, savedNote]);
 
   function dismissHighlightGuide() {
     setShowHighlightGuide(false);
     void persistHighlightGuideDismissal(AsyncStorage);
   }
 
-  if (analyzeStatus === "analyzing") {
+  if (!savedNote && analyzeStatus === "analyzing") {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#6858e9" />
@@ -116,7 +121,7 @@ export default function ReaderScreen() {
     );
   }
 
-  if (analyzeStatus === "error") {
+  if (!savedNote && analyzeStatus === "error") {
     return (
       <SafeAreaView style={styles.stateShell} edges={["top", "bottom"]}>
         <TouchableOpacity
@@ -148,7 +153,8 @@ export default function ReaderScreen() {
     );
   }
 
-  if (analyzeStatus !== "done" || !analyzeResponse) {
+  const readerResponse = savedNote?.annotations ?? analyzeResponse;
+  if (!readerResponse || (!savedNote && analyzeStatus !== "done")) {
     return (
       <View style={styles.centered}>
         <Text style={styles.muted}>No analysis yet. Capture a passage to begin.</Text>
@@ -156,15 +162,18 @@ export default function ReaderScreen() {
     );
   }
 
-  const response = analyzeResponse;
+  const response = readerResponse;
   const { bookInference, vocab, inBookRefs, realWorldRefs } = response;
-  const text = response.normalizedText ?? normalizedText ?? "";
+  const text = savedNote?.passageText ?? response.normalizedText ?? normalizedText ?? "";
   const totalAnnotations = vocab.length + inBookRefs.length + realWorldRefs.length;
-  const displayTitle = confirmedBookTitle ?? bookInference.title ?? "Unknown";
+  const displayTitle = savedNote?.bookTitle ?? confirmedBookTitle ?? bookInference.title ?? "Unknown";
+  const displayByline = savedNote
+    ? `Saved ${formatReaderDate(savedNote.createdAt)}`
+    : authorHint.trim() || "Reading analysis";
   const segments = renderAnnotatedText(text, vocab, inBookRefs, realWorldRefs);
 
   async function handleSave() {
-    if (saveStatus !== "idle") return;
+    if (saveStatus !== "idle" || savedNote) return;
     if (!user) {
       setSaveToast({ kind: "error", message: "Your session expired. Sign in again before saving." });
       return;
@@ -211,9 +220,7 @@ export default function ReaderScreen() {
         </TouchableOpacity>
         <View style={styles.readerHeading}>
           <Text style={styles.readerEyebrow} numberOfLines={1}>{displayTitle}</Text>
-          <Text style={styles.readerByline} numberOfLines={1}>
-            {authorHint.trim() || "Reading analysis"}
-          </Text>
+          <Text style={styles.readerByline} numberOfLines={1}>{displayByline}</Text>
         </View>
         <View style={styles.insightPill}>
           <View style={styles.insightDot} />
@@ -285,7 +292,7 @@ export default function ReaderScreen() {
         <TouchableOpacity
           accessibilityRole="button"
           accessibilityLabel={saveStatus === "saved" ? "Passage saved" : "Save passage to Library"}
-          disabled={saveStatus !== "idle" || needsBookTitleConfirmation}
+          disabled={saveStatus !== "idle" || savedNote !== null || needsBookTitleConfirmation}
           style={[styles.saveButton, saveStatus !== "idle" && styles.saveButtonDisabled]}
           onPress={() => void handleSave()}
         >
@@ -305,7 +312,7 @@ export default function ReaderScreen() {
     </SafeAreaView>
     </ImageBackground>
     </BlurTargetView>
-    <Modal transparent visible={needsBookTitleConfirmation} animationType="fade">
+    <Modal transparent visible={!savedNote && needsBookTitleConfirmation} animationType="fade">
       <View style={styles.modalOverlay}>
         <ModalBlur blurTarget={blurTargetRef} />
       <View style={styles.modalBackdrop}>
@@ -349,11 +356,17 @@ export default function ReaderScreen() {
       onDismiss={() => setSelectedReference(null)}
     />
     <HighlightGuide
-      visible={showHighlightGuide && !needsBookTitleConfirmation}
+      visible={showHighlightGuide && (savedNote !== null || !needsBookTitleConfirmation)}
       onDismiss={dismissHighlightGuide}
     />
     </>
   );
+}
+
+function formatReaderDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "recently";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 function HighlightGuide({ visible, onDismiss }: { visible: boolean; onDismiss: () => void }) {

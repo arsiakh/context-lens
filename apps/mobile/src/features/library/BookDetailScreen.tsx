@@ -8,26 +8,30 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { Book } from "../../types";
+import type { RouteProp } from "@react-navigation/native";
+import type { Note } from "../../types";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useAuthStore } from "../../stores/authStore";
-import { fetchBooks } from "../../services/supabase/library";
+import { fetchNotesForBook } from "../../services/supabase/library";
+import { getNotePreview } from "../../services/supabase/libraryLogic";
 
-type LibraryNav = NativeStackNavigationProp<RootStackParamList, "Library">;
+type BookDetailRoute = RouteProp<RootStackParamList, "BookDetail">;
+type BookDetailNav = NativeStackNavigationProp<RootStackParamList, "BookDetail">;
 
-export default function LibraryScreen() {
-  const navigation = useNavigation<LibraryNav>();
+export default function BookDetailScreen() {
+  const route = useRoute<BookDetailRoute>();
+  const navigation = useNavigation<BookDetailNav>();
   const user = useAuthStore((state) => state.user);
-  const [books, setBooks] = useState<Book[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadBooks = useCallback(async (mode: "initial" | "refresh" = "initial") => {
+  const loadNotes = useCallback(async (mode: "initial" | "refresh" = "initial") => {
     if (!user) {
-      setError("Sign in again to view your Library.");
+      setError("Sign in again to view your saved notes.");
       setIsLoading(false);
       setIsRefreshing(false);
       return;
@@ -37,26 +41,26 @@ export default function LibraryScreen() {
     else setIsLoading(true);
     setError(null);
     try {
-      setBooks(await fetchBooks(user.id));
+      setNotes(await fetchNotesForBook(user.id, route.params.bookId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Saved books could not be loaded. Please try again.");
+      setError(e instanceof Error ? e.message : "Saved notes could not be loaded. Please try again.");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [user]);
+  }, [route.params.bookId, user]);
 
   useFocusEffect(
     useCallback(() => {
-      void loadBooks();
-    }, [loadBooks])
+      void loadNotes();
+    }, [loadNotes])
   );
 
   if (isLoading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#6858e9" />
-        <Text style={styles.muted}>Loading saved books…</Text>
+        <Text style={styles.muted}>Loading saved notes…</Text>
       </View>
     );
   }
@@ -64,23 +68,20 @@ export default function LibraryScreen() {
   if (error) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.title}>Library</Text>
+        <Text style={styles.title}>{route.params.title}</Text>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => void loadBooks()}>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => void loadNotes()}>
           <Text style={styles.primaryButtonText}>Try again</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  if (books.length === 0) {
+  if (notes.length === 0) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.title}>Library</Text>
-        <Text style={styles.subtitle}>No saved notes yet. Capture a passage to get started.</Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate("Scan")}>
-          <Text style={styles.primaryButtonText}>Capture a passage</Text>
-        </TouchableOpacity>
+        <Text style={styles.title}>{route.params.title}</Text>
+        <Text style={styles.subtitle}>No saved notes for this book yet.</Text>
       </View>
     );
   }
@@ -89,27 +90,34 @@ export default function LibraryScreen() {
     <FlatList
       style={styles.list}
       contentContainerStyle={styles.listContent}
-      data={books}
+      data={notes}
       keyExtractor={(item) => item.id}
-      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void loadBooks("refresh")} />}
+      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void loadNotes("refresh")} />}
       ListHeaderComponent={
         <View style={styles.header}>
-          <Text style={styles.title}>Library</Text>
-          <Text style={styles.subtitle}>{books.length} saved {books.length === 1 ? "book" : "books"}</Text>
+          <Text style={styles.title}>{route.params.title}</Text>
+          <Text style={styles.subtitle}>{notes.length} saved {notes.length === 1 ? "note" : "notes"}</Text>
         </View>
       }
-      renderItem={({ item }) => (
+      renderItem={({ item, index }) => (
         <TouchableOpacity
           accessibilityRole="button"
-          style={styles.bookRow}
-          onPress={() => navigation.navigate("BookDetail", { bookId: item.id, title: item.title })}
+          style={styles.noteRow}
+          onPress={() => navigation.navigate("Reader", {
+            savedNote: {
+              noteId: item.id,
+              bookId: item.bookId,
+              bookTitle: route.params.title,
+              passageText: item.passageText,
+              annotations: item.annotations,
+              createdAt: item.createdAt,
+            },
+          })}
         >
-          <View style={styles.bookIcon}>
-            <Text style={styles.bookIconText}>{item.title.trim().charAt(0).toUpperCase() || "B"}</Text>
-          </View>
-          <View style={styles.bookText}>
-            <Text style={styles.bookTitle} numberOfLines={1}>{item.title}</Text>
-            <Text style={styles.bookMeta}>Saved {formatDate(item.createdAt)}</Text>
+          <Text style={styles.noteIndex}>#{index + 1}</Text>
+          <View style={styles.noteText}>
+            <Text style={styles.notePreview} numberOfLines={2}>{getNotePreview(item.passageText)}</Text>
+            <Text style={styles.noteMeta}>Saved {formatDate(item.createdAt)}</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
@@ -135,7 +143,7 @@ const styles = StyleSheet.create({
   list: { flex: 1, backgroundColor: "#fff" },
   listContent: { padding: 20, paddingBottom: 36 },
   header: { marginBottom: 18 },
-  title: { fontSize: 30, fontWeight: "800", color: "#111", marginBottom: 8 },
+  title: { fontSize: 28, fontWeight: "800", color: "#111", marginBottom: 8, textAlign: "center" },
   subtitle: { fontSize: 15, color: "#666", lineHeight: 22, textAlign: "center" },
   muted: { marginTop: 14, color: "#666", fontSize: 15 },
   errorText: { color: "#C62828", fontSize: 15, textAlign: "center", lineHeight: 22 },
@@ -147,11 +155,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#6858e9",
   },
   primaryButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  bookRow: {
-    minHeight: 74,
+  noteRow: {
+    minHeight: 82,
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 12,
     padding: 14,
     marginBottom: 12,
     borderRadius: 16,
@@ -159,17 +167,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(86, 57, 37, 0.14)",
   },
-  bookIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#E9DED2",
-  },
-  bookIconText: { color: "#563925", fontSize: 18, fontWeight: "800" },
-  bookText: { flex: 1, minWidth: 0 },
-  bookTitle: { fontSize: 17, fontWeight: "700", color: "#2F2620" },
-  bookMeta: { marginTop: 4, fontSize: 12, color: "#74675D" },
+  noteIndex: { width: 34, color: "#765238", fontWeight: "800", fontSize: 13 },
+  noteText: { flex: 1, minWidth: 0 },
+  notePreview: { color: "#2F2620", fontSize: 15, lineHeight: 21, fontWeight: "600" },
+  noteMeta: { marginTop: 6, fontSize: 12, color: "#74675D" },
   chevron: { color: "#765238", fontSize: 28, fontWeight: "300" },
 });

@@ -5,13 +5,25 @@ import SignInScreen from "../features/auth/SignInScreen";
 import ScanScreen from "../features/scan/ScanScreen";
 import ReaderScreen from "../features/reader/ReaderScreen";
 import LibraryScreen from "../features/library/LibraryScreen";
+import BookDetailScreen from "../features/library/BookDetailScreen";
 import { useAuthStore } from "../stores/authStore";
+import type { AnalyzeResponse } from "../types";
+
+export interface SavedNoteReaderParams {
+  noteId: string;
+  bookId: string;
+  bookTitle: string;
+  passageText: string;
+  annotations: AnalyzeResponse;
+  createdAt: string;
+}
 
 export type RootStackParamList = {
   SignIn: undefined;
   Scan: undefined;
-  Reader: undefined;
+  Reader: { savedNote?: SavedNoteReaderParams } | undefined;
   Library: undefined;
+  BookDetail: { bookId: string; title: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -38,6 +50,7 @@ export default function RootNavigator() {
             <Stack.Screen name="Scan" component={ScanScreen} options={{ title: "Scan" }} />
             <Stack.Screen name="Reader" component={ReaderScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Library" component={LibraryScreen} options={{ title: "Library" }} />
+            <Stack.Screen name="BookDetail" component={BookDetailScreen} options={({ route }) => ({ title: route.params.title })} />
           </>
         ) : (
           // Unauthenticated stack — only SignIn is accessible
