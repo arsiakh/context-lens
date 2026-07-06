@@ -25,8 +25,16 @@ import type { RouteProp } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useScanStore } from "../../stores/scanStore";
 import { useAuthStore } from "../../stores/authStore";
+import { useLatencyStore } from "../../stores/latencyStore";
+import { formatLatencyMs, getLatencyBreakdown } from "../../stores/latencyLogic";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { saveNote, SaveError } from "../../services/supabase/saveNote";
+import { submitAnnotationFeedback, FeedbackError } from "../../services/supabase/feedback";
+import {
+  getFeedbackAnnotationId,
+  getFeedbackSuccessMessage,
+  type FeedbackAnnotation,
+} from "../../services/supabase/feedbackLogic";
 import type { InBookRef, RealWorldRef, VocabItem } from "../../types";
 import { colors, radii, spacing, typography } from "../../ui/theme";
 import { getPopoverLayout, type PopoverAnchor } from "./getPopoverLayout";
@@ -64,13 +72,33 @@ export default function ReaderScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "Reader">>();
   const savedNote = route.params?.savedNote ?? null;
+  const currentReaderResponse = savedNote?.annotations ?? analyzeResponse;
   const user = useAuthStore((state) => state.user);
+  const latencyMarks = {
+    captureStartedAt: useLatencyStore((state) => state.captureStartedAt),
+    ocrCompletedAt: useLatencyStore((state) => state.ocrCompletedAt),
+    analysisStartedAt: useLatencyStore((state) => state.analysisStartedAt),
+    analysisCompletedAt: useLatencyStore((state) => state.analysisCompletedAt),
+    readerRenderedAt: useLatencyStore((state) => state.readerRenderedAt),
+  };
+  const markReaderRendered = useLatencyStore((state) => state.markReaderRendered);
+  const latencyBreakdown = useMemo(
+    () => getLatencyBreakdown(latencyMarks),
+    [
+      latencyMarks.analysisCompletedAt,
+      latencyMarks.analysisStartedAt,
+      latencyMarks.captureStartedAt,
+      latencyMarks.ocrCompletedAt,
+      latencyMarks.readerRenderedAt,
+    ]
+  );
   const [titleDraft, setTitleDraft] = useState("");
   const [selectedVocab, setSelectedVocab] = useState<VocabSelection>(null);
   const [selectedReference, setSelectedReference] = useState<ReferenceSelection>(null);
   const [showHighlightGuide, setShowHighlightGuide] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveToast, setSaveToast] = useState<SaveToastState>(null);
+  const [feedbackPendingId, setFeedbackPendingId] = useState<string | null>(null);
   const highlightGuideChecked = useRef(false);
   const blurTargetRef = useRef<View>(null);
 
@@ -81,9 +109,8 @@ export default function ReaderScreen() {
   }, [analyzeResponse?.bookInference.title, needsBookTitleConfirmation, savedNote]);
 
   useEffect(() => {
-    const readerResponse = savedNote?.annotations ?? analyzeResponse;
     const readerReady = savedNote !== null || analyzeStatus === "done";
-    if (!readerReady || !readerResponse || highlightGuideChecked.current) return;
+    if (!readerReady || !currentReaderResponse || highlightGuideChecked.current) return;
 
     highlightGuideChecked.current = true;
     let active = true;
@@ -94,7 +121,17 @@ export default function ReaderScreen() {
     return () => {
       active = false;
     };
-  }, [analyzeResponse, analyzeStatus, savedNote]);
+  }, [analyzeStatus, currentReaderResponse, savedNote]);
+
+  useEffect(() => {
+    const readerReady = savedNote !== null || analyzeStatus === "done";
+    if (readerReady && currentReaderResponse) markReaderRendered();
+  }, [analyzeStatus, currentReaderResponse, markReaderRendered, savedNote]);
+
+  useEffect(() => {
+    if (!__DEV__ || savedNote || latencyMarks.readerRenderedAt === null) return;
+    console.info("[Latency] scan", latencyBreakdown);
+  }, [latencyBreakdown, latencyMarks.readerRenderedAt, savedNote]);
 
   useEffect(() => {
     if (!saveToast) return;
@@ -153,7 +190,7 @@ export default function ReaderScreen() {
     );
   }
 
-  const readerResponse = savedNote?.annotations ?? analyzeResponse;
+  const readerResponse = currentReaderResponse;
   if (!readerResponse || (!savedNote && analyzeStatus !== "done")) {
     return (
       <View style={styles.centered}>
@@ -196,6 +233,29 @@ export default function ReaderScreen() {
         kind: "error",
         message: error instanceof SaveError ? error.message : "The passage could not be saved. Please try again.",
       });
+    }
+  }
+
+  async function handleFeedback(annotation: FeedbackAnnotation) {
+    if (!user) {
+      setSaveToast({ kind: "error", message: "Sign in again before sending feedback." });
+      return;
+    }
+
+    const annotationId = getFeedbackAnnotationId(annotation);
+    if (feedbackPendingId === annotationId) return;
+
+    setFeedbackPendingId(annotationId);
+    try {
+      await submitAnnotationFeedback({ userId: user.id, annotation });
+      setSaveToast({ kind: "success", message: getFeedbackSuccessMessage(annotation.type) });
+    } catch (error) {
+      setSaveToast({
+        kind: "error",
+        message: error instanceof FeedbackError ? error.message : "Feedback could not be saved. Please try again.",
+      });
+    } finally {
+      setFeedbackPendingId(null);
     }
   }
 
@@ -304,6 +364,8 @@ export default function ReaderScreen() {
         </TouchableOpacity>
       </View>
 
+      {__DEV__ && <LatencyOverlay breakdown={latencyBreakdown} />}
+
       <View style={styles.readerTabBar}>
         <ReaderTab icon="▣" label="Text" active />
         <ReaderTab icon="◎" label="Context" />
@@ -348,12 +410,16 @@ export default function ReaderScreen() {
     </Modal>
     <VocabPopover
       selection={selectedVocab}
+      feedbackPendingId={feedbackPendingId}
       onDismiss={() => setSelectedVocab(null)}
+      onFeedback={(item) => void handleFeedback({ type: "vocab", item })}
     />
     <ReferenceSheet
       selection={selectedReference}
       blurTarget={blurTargetRef}
+      feedbackPendingId={feedbackPendingId}
       onDismiss={() => setSelectedReference(null)}
+      onFeedback={(annotation) => void handleFeedback(annotation)}
     />
     <HighlightGuide
       visible={showHighlightGuide && (savedNote !== null || !needsBookTitleConfirmation)}
@@ -397,6 +463,17 @@ function HighlightGuide({ visible, onDismiss }: { visible: boolean; onDismiss: (
         </View>
       </Pressable>
     </Modal>
+  );
+}
+
+function LatencyOverlay({ breakdown }: { breakdown: ReturnType<typeof getLatencyBreakdown> }) {
+  return (
+    <View pointerEvents="none" style={styles.latencyOverlay}>
+      <Text style={styles.latencyText}>Total {formatLatencyMs(breakdown.totalMs)}</Text>
+      <Text style={styles.latencySubText}>
+        OCR {formatLatencyMs(breakdown.captureToOcrMs)} · API {formatLatencyMs(breakdown.apiMs)} · UI {formatLatencyMs(breakdown.uiRenderMs)}
+      </Text>
+    </View>
   );
 }
 
@@ -520,12 +597,17 @@ function AnnotationSegmentText({
 
 function VocabPopover({
   selection,
+  feedbackPendingId,
   onDismiss,
+  onFeedback,
 }: {
   selection: VocabSelection;
+  feedbackPendingId: string | null;
   onDismiss: () => void;
+  onFeedback: (item: VocabItem) => void;
 }) {
   const item = selection?.item ?? null;
+  const feedbackId = item ? getFeedbackAnnotationId({ type: "vocab", item }) : null;
   const [cardHeight, setCardHeight] = useState(230);
   const viewport = Dimensions.get("window");
   const layout = selection
@@ -599,6 +681,16 @@ function VocabPopover({
                   <Text style={styles.dictionaryTagText}>contextual meaning</Text>
                 </View>
               </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                disabled={feedbackId !== null && feedbackPendingId === feedbackId}
+                style={styles.feedbackButton}
+                onPress={() => onFeedback(item)}
+              >
+                <Text style={styles.feedbackButtonText}>
+                  {feedbackId !== null && feedbackPendingId === feedbackId ? "Sending…" : "Wrong highlight?"}
+                </Text>
+              </TouchableOpacity>
             </>
           )}
           </ImageBackground>
@@ -612,15 +704,23 @@ function VocabPopover({
 function ReferenceSheet({
   selection,
   blurTarget,
+  feedbackPendingId,
   onDismiss,
+  onFeedback,
 }: {
   selection: ReferenceSelection;
   blurTarget: RefObject<View | null>;
+  feedbackPendingId: string | null;
   onDismiss: () => void;
+  onFeedback: (annotation: Extract<FeedbackAnnotation, { type: "inBookRef" | "realWorldRef" }>) => void;
 }) {
   const item = selection?.item ?? null;
   const isRealWorld = selection?.type === "realWorldRef";
   const title = isRealWorld ? "Real-world Reference" : "In-book Context";
+  const feedbackAnnotation = selection?.type && item
+    ? { type: selection.type, item } as Extract<FeedbackAnnotation, { type: "inBookRef" | "realWorldRef" }>
+    : null;
+  const feedbackId = feedbackAnnotation ? getFeedbackAnnotationId(feedbackAnnotation) : null;
   const sheetTranslateY = useRef(new Animated.Value(500)).current;
 
   const closeSheet = useCallback(() => {
@@ -740,12 +840,27 @@ function ReferenceSheet({
                 </Text>
               </View>
               <Text style={styles.sheetBody}>{item.explanation}</Text>
+              {item.confidence < 0.7 && (
+                <Text style={styles.inferredLabel}>May be inferred</Text>
+              )}
               <View style={styles.sheetInsight}>
                 <Text style={styles.sheetInsightLabel}>Context Lens</Text>
                 <Text style={styles.sheetConfidence}>
                   Analysis confidence {Math.round(item.confidence * 100)}%
                 </Text>
               </View>
+              {feedbackAnnotation && (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  disabled={feedbackId !== null && feedbackPendingId === feedbackId}
+                  style={styles.sheetFeedbackButton}
+                  onPress={() => onFeedback(feedbackAnnotation)}
+                >
+                  <Text style={styles.feedbackButtonText}>
+                    {feedbackId !== null && feedbackPendingId === feedbackId ? "Sending…" : "Wrong highlight?"}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
           )}
           </ImageBackground>
@@ -978,6 +1093,27 @@ const styles = StyleSheet.create({
     color: colors.paper,
     fontSize: 22,
     lineHeight: 24,
+  },
+  latencyOverlay: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: 76,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(47, 38, 32, 0.78)",
+  },
+  latencyText: {
+    color: colors.paper,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  latencySubText: {
+    marginTop: 2,
+    color: "rgba(234, 227, 218, 0.86)",
+    fontSize: 10,
+    fontWeight: "600",
   },
   readerTabBar: {
     minHeight: 62,
@@ -1253,6 +1389,21 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 6,
   },
+  feedbackButton: {
+    alignSelf: "flex-start",
+    marginTop: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(86, 57, 37, 0.10)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
+  },
+  feedbackButtonText: {
+    color: colors.brown,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   dictionaryTag: {
     paddingVertical: 4,
     paddingHorizontal: 10,
@@ -1423,7 +1574,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 21,
     color: colors.inkSoft,
+    marginBottom: 8,
+  },
+  inferredLabel: {
+    alignSelf: "flex-start",
     marginBottom: 16,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(116, 103, 93, 0.10)",
+    color: colors.inkFaint,
+    fontSize: 11,
+    fontWeight: "700",
   },
   sheetInsight: {
     borderRadius: 14,
@@ -1444,5 +1606,16 @@ const styles = StyleSheet.create({
   sheetConfidence: {
     fontSize: 12,
     color: colors.inkFaint,
+  },
+  sheetFeedbackButton: {
+    alignSelf: "flex-start",
+    marginTop: 14,
+    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radii.pill,
+    backgroundColor: colors.brownWash,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
   },
 });
