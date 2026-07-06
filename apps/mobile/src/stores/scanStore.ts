@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { AnalyzeResponse } from "../types";
 import { analyzePassage, AnalyzeError, type AnalyzeErrorKind } from "../services/api";
+import { useLatencyStore } from "./latencyStore";
 
 // Represents where the scan flow currently is.
 // idle       → camera preview is showing, nothing captured yet
@@ -98,6 +99,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
   analyze: async () => {
     const { normalizedText: text, bookTitleHint, authorHint, analyzeStatus } = get();
     if (!text || analyzeStatus === "analyzing") return;
+    useLatencyStore.getState().startAnalysis();
     set({ analyzeStatus: "analyzing", analyzeError: null, needsBookTitleConfirmation: false });
     try {
       const cleanedHint = bookTitleHint.trim();
@@ -106,6 +108,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
         bookTitle: cleanedHint,
         author: cleanedAuthor,
       });
+      useLatencyStore.getState().completeAnalysis();
       const inferredTitle = response.bookInference.title?.trim() || null;
       const highConfidence = response.bookInference.confidence >= BOOK_INFERENCE_THRESHOLD;
       set({
@@ -115,6 +118,7 @@ export const useScanStore = create<ScanState>((set, get) => ({
         needsBookTitleConfirmation: !cleanedHint && !highConfidence,
       });
     } catch (e) {
+      useLatencyStore.getState().completeAnalysis();
       const err: AnalyzeErrorState =
         e instanceof AnalyzeError
           ? { kind: e.kind, message: e.message, retryAfterSeconds: e.retryAfterSeconds }

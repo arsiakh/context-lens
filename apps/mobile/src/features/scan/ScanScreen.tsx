@@ -18,6 +18,7 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useScanStore } from "../../stores/scanStore";
+import { useLatencyStore } from "../../stores/latencyStore";
 import { extractAndNormalize } from "../../services/ocr";
 import { readerPreviewAuthor, readerPreviewFixture } from "../reader/readerPreviewFixture";
 
@@ -43,11 +44,15 @@ export default function ScanScreen() {
     analyze,
     reset,
   } = useScanStore();
+  const startCaptureLatency = useLatencyStore((state) => state.startCapture);
+  const completeOcrLatency = useLatencyStore((state) => state.completeOcr);
+  const resetLatency = useLatencyStore((state) => state.reset);
 
   // Reset scan state on mount so a fresh capture flow is always shown.
   useEffect(() => {
     reset();
-  }, [reset]);
+    resetLatency();
+  }, [reset, resetLatency]);
 
   async function handleCapture() {
     // Ensure camera permission before launching the native camera.
@@ -70,10 +75,12 @@ export default function ScanScreen() {
     const uri = result.assets?.at(0)?.uri;
     if (!uri) return;
 
+    startCaptureLatency();
     setCaptured(uri);
     setExtracting();
     try {
       const { normalizedText, rawText } = await extractAndNormalize(uri);
+      completeOcrLatency();
       setExtracted(rawText, normalizedText);
     } catch (e: unknown) {
       const msg = (e as { message?: string }).message ?? "Text extraction failed.";
@@ -196,6 +203,8 @@ export default function ScanScreen() {
         <TouchableOpacity
           style={styles.previewButton}
           onPress={() => {
+            startCaptureLatency();
+            completeOcrLatency();
             loadPreviewAnalysis(readerPreviewFixture, readerPreviewAuthor);
             navigation.navigate("Reader");
           }}
