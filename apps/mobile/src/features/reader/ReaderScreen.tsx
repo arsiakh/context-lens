@@ -27,6 +27,7 @@ import { useScanStore } from "../../stores/scanStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useLatencyStore } from "../../stores/latencyStore";
 import { formatLatencyMs, getLatencyBreakdown } from "../../stores/latencyLogic";
+import { getAnalyzeErrorTitle, getRetryCountdownSeconds } from "../../stores/analyzeErrorLogic";
 import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { saveNote, SaveError } from "../../services/supabase/saveNote";
 import { submitAnnotationFeedback, FeedbackError } from "../../services/supabase/feedback";
@@ -99,6 +100,7 @@ export default function ReaderScreen() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveToast, setSaveToast] = useState<SaveToastState>(null);
   const [feedbackPendingId, setFeedbackPendingId] = useState<string | null>(null);
+  const [retryCountdownElapsedMs, setRetryCountdownElapsedMs] = useState(0);
   const highlightGuideChecked = useRef(false);
   const blurTargetRef = useRef<View>(null);
 
@@ -149,6 +151,20 @@ export default function ReaderScreen() {
     void persistHighlightGuideDismissal(AsyncStorage);
   }
 
+  useEffect(() => {
+    if (!analyzeError?.retryAfterSeconds) {
+      setRetryCountdownElapsedMs(0);
+      return;
+    }
+
+    setRetryCountdownElapsedMs(0);
+    const startedAt = Date.now();
+    const interval = setInterval(() => {
+      setRetryCountdownElapsedMs(Date.now() - startedAt);
+    }, 1_000);
+    return () => clearInterval(interval);
+  }, [analyzeError?.retryAfterSeconds, analyzeError?.message]);
+
   if (!savedNote && analyzeStatus === "analyzing") {
     return (
       <View style={styles.centered}>
@@ -159,6 +175,8 @@ export default function ReaderScreen() {
   }
 
   if (!savedNote && analyzeStatus === "error") {
+    const retryCountdown = getRetryCountdownSeconds(analyzeError?.retryAfterSeconds, retryCountdownElapsedMs);
+    const retryDisabled = retryCountdown != null && retryCountdown > 0;
     return (
       <SafeAreaView style={styles.stateShell} edges={["top", "bottom"]}>
         <TouchableOpacity
@@ -171,19 +189,20 @@ export default function ReaderScreen() {
         </TouchableOpacity>
         <View style={styles.centered}>
         <View style={styles.errorBanner}>
-          <Text style={styles.errorTitle}>Analysis failed</Text>
+          <Text style={styles.errorTitle}>{getAnalyzeErrorTitle(analyzeError)}</Text>
           <Text style={styles.errorText}>{analyzeError?.message ?? "Something went wrong. Please try again."}</Text>
-          {analyzeError?.retryAfterSeconds != null && (
-            <Text style={styles.errorSub}>Try again in {analyzeError.retryAfterSeconds}s.</Text>
+          {retryCountdown != null && retryCountdown > 0 && (
+            <Text style={styles.errorSub}>Try again in {retryCountdown}s.</Text>
           )}
         </View>
         <TouchableOpacity
           accessibilityLabel="Retry analysis"
           accessibilityRole="button"
-          style={styles.retryButton}
+          disabled={retryDisabled}
+          style={[styles.retryButton, retryDisabled && styles.retryButtonDisabled]}
           onPress={() => void analyze()}
         >
-          <Text style={styles.retryText}>Retry</Text>
+          <Text style={styles.retryText}>{retryDisabled ? "Wait to retry" : "Retry"}</Text>
         </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -1166,6 +1185,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     borderRadius: 8,
     backgroundColor: "#6858e9",
+  },
+  retryButtonDisabled: {
+    opacity: 0.55,
   },
   retryText: { color: "#fff", fontWeight: "600", fontSize: 15 },
   guideBackdrop: {

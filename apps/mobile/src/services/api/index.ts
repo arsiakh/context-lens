@@ -1,5 +1,6 @@
 import { supabase } from "../supabase/client";
 import type { AnalyzeResponse } from "../../types";
+import { isDeviceOffline } from "./network";
 
 // Client for the backend /api/analyze endpoint.
 //
@@ -17,6 +18,7 @@ export type AnalyzeErrorKind =
   | "invalid_input"
   | "model_failure"
   | "timeout"
+  | "offline"
   | "network"
   | "server";
 
@@ -38,6 +40,10 @@ export interface AnalyzePassageHint {
 export async function analyzePassage(text: string, hint: AnalyzePassageHint = {}): Promise<AnalyzeResponse> {
   if (!API_URL) {
     throw new AnalyzeError("server", "API URL is not configured. Set EXPO_PUBLIC_API_URL.");
+  }
+
+  if (await isDeviceOffline()) {
+    throw new AnalyzeError("offline", "You're offline. Reconnect to Wi‑Fi or cellular, then try again.");
   }
 
   // Grab the current access token for the Authorization header.
