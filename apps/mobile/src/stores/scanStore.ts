@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import type { AnalyzeResponse } from "../types";
-import { analyzePassage, AnalyzeError, type AnalyzeErrorKind } from "../services/api";
+import { analyzePassage, AnalyzeError } from "../services/api";
 import { useLatencyStore } from "./latencyStore";
+import type { AnalyzeErrorState } from "./analyzeErrorLogic";
 
 // Represents where the scan flow currently is.
 // idle       → camera preview is showing, nothing captured yet
@@ -14,12 +15,6 @@ type ScanStatus = "idle" | "captured" | "extracting" | "extracted" | "error";
 // Where the LLM analysis call is in its lifecycle.
 type AnalyzeStatus = "idle" | "analyzing" | "done" | "error";
 const BOOK_INFERENCE_THRESHOLD = 0.7;
-
-interface AnalyzeErrorState {
-  kind: AnalyzeErrorKind;
-  message: string;
-  retryAfterSeconds?: number;
-}
 
 interface ScanState {
   status: ScanStatus;
