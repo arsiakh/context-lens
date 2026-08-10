@@ -1,0 +1,18 @@
+diff --git a/node_modules/expo/node_modules/@expo/cli/build/src/run/ios/codeSigning/configureCodeSigning.js b/node_modules/expo/node_modules/@expo/cli/build/src/run/ios/codeSigning/configureCodeSigning.js
+index dcf3b5b..1577576 100644
+--- a/node_modules/expo/node_modules/@expo/cli/build/src/run/ios/codeSigning/configureCodeSigning.js
++++ b/node_modules/expo/node_modules/@expo/cli/build/src/run/ios/codeSigning/configureCodeSigning.js
+@@ -67,7 +67,12 @@ function _interop_require_wildcard(obj, nodeInterop) {
+ }
+ async function ensureDeviceIsCodeSignedForDeploymentAsync(projectRoot) {
+     if (isCodeSigningConfigured(projectRoot)) {
+-        return null;
++        // Return the configured team so XcodeBuild can pass
++        // -allowProvisioningUpdates for automatically signed device builds.
++        // Returning null here causes Expo to omit that flag when a team is
++        // already present in the generated Xcode project.
++        const signingInfo = (0, _xcodeCodeSigning.getCodeSigningInfoForPbxproj)(projectRoot);
++        return Object.values(signingInfo).flatMap((target)=>target.developmentTeams)[0] ?? null;
+     }
+     return configureCodeSigningAsync(projectRoot);
+ }
