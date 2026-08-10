@@ -19,16 +19,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlurTargetView, BlurView } from "expo-blur";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
-import { useNavigation, useRoute } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RouteProp } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useScanStore } from "../../stores/scanStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useLatencyStore } from "../../stores/latencyStore";
 import { formatLatencyMs, getLatencyBreakdown } from "../../stores/latencyLogic";
 import { getAnalyzeErrorTitle, getRetryCountdownSeconds } from "../../stores/analyzeErrorLogic";
-import type { RootStackParamList } from "../../navigation/RootNavigator";
+import type { SavedNoteReaderParams } from "../../navigation/RootNavigator";
 import { saveNote, SaveError } from "../../services/supabase/saveNote";
 import { submitAnnotationFeedback, FeedbackError } from "../../services/supabase/feedback";
 import {
@@ -58,7 +56,13 @@ type VocabSelection = {
 type SaveStatus = "idle" | "saving" | "saved";
 type SaveToastState = { kind: "success" | "error"; message: string } | null;
 
-export default function ReaderScreen() {
+export default function ReaderScreen({
+  savedNote = null,
+  embedded = false,
+}: {
+  savedNote?: SavedNoteReaderParams | null;
+  embedded?: boolean;
+}) {
   const {
     analyzeStatus,
     analyzeResponse,
@@ -70,9 +74,7 @@ export default function ReaderScreen() {
     confirmBookTitle,
     analyze,
   } = useScanStore();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const route = useRoute<RouteProp<RootStackParamList, "Reader">>();
-  const savedNote = route.params?.savedNote ?? null;
+  const navigation = useNavigation<any>();
   const currentReaderResponse = savedNote?.annotations ?? analyzeResponse;
   const user = useAuthStore((state) => state.user);
   const latencyMarks = {
@@ -168,8 +170,9 @@ export default function ReaderScreen() {
   if (!savedNote && analyzeStatus === "analyzing") {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#6858e9" />
+        <ActivityIndicator size="large" color={colors.brown} />
         <Text style={styles.muted}>Analyzing passage…</Text>
+        {embedded && <TouchableOpacity style={styles.analysisBack} onPress={() => navigation.navigate("Capture")}><Text style={styles.analysisBackText}>Back to Capture</Text></TouchableOpacity>}
       </View>
     );
   }
@@ -183,7 +186,7 @@ export default function ReaderScreen() {
           accessibilityLabel="Back"
           accessibilityRole="button"
           style={styles.stateBackButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => embedded ? navigation.navigate("Capture") : navigation.goBack()}
         >
           <Text style={styles.backButtonText}>‹</Text>
         </TouchableOpacity>
@@ -214,6 +217,7 @@ export default function ReaderScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.muted}>No analysis yet. Capture a passage to begin.</Text>
+        {embedded && <TouchableOpacity style={styles.analysisBack} onPress={() => navigation.navigate("Capture")}><Text style={styles.analysisBackText}>Capture a passage</Text></TouchableOpacity>}
       </View>
     );
   }
@@ -293,7 +297,7 @@ export default function ReaderScreen() {
         <TouchableOpacity
           accessibilityLabel="Back"
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => embedded ? navigation.navigate("Capture") : navigation.goBack()}
         >
           <Text style={styles.backButtonText}>‹</Text>
         </TouchableOpacity>
@@ -385,11 +389,6 @@ export default function ReaderScreen() {
 
       {__DEV__ && <LatencyOverlay breakdown={latencyBreakdown} />}
 
-      <View style={styles.readerTabBar}>
-        <ReaderTab icon="▣" label="Text" active />
-        <ReaderTab icon="◎" label="Context" />
-        <ReaderTab icon="⌄" label="Summary" />
-      </View>
     </SafeAreaView>
     </ImageBackground>
     </BlurTargetView>
@@ -519,15 +518,6 @@ function LegendChip({
         styles.legendLabel,
         kind === "realWorld" ? styles.legendLabelBlue : styles.legendLabelBrown,
       ]}>{label}</Text>
-    </View>
-  );
-}
-
-function ReaderTab({ icon, label, active = false }: { icon: string; label: string; active?: boolean }) {
-  return (
-    <View style={styles.readerTab}>
-      <Text style={[styles.readerTabIcon, active && styles.readerTabActive]}>{icon}</Text>
-      <Text style={[styles.readerTabLabel, active && styles.readerTabActive]}>{label}</Text>
     </View>
   );
 }
@@ -1134,32 +1124,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "600",
   },
-  readerTabBar: {
-    minHeight: 62,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.line,
-    backgroundColor: colors.glass,
-  },
-  readerTab: {
-    width: 82,
-    alignItems: "center",
-    gap: 2,
-  },
-  readerTabIcon: {
-    color: colors.inkFaint,
-    fontSize: 19,
-    lineHeight: 22,
-  },
-  readerTabLabel: {
-    color: colors.inkFaint,
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  readerTabActive: { color: colors.brownDeep },
   centered: {
     flex: 1,
     justifyContent: "center",
@@ -1168,6 +1132,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paper,
   },
   muted: { marginTop: 16, fontSize: 15, color: colors.inkSoft, textAlign: "center" },
+  analysisBack: { marginTop: 22, paddingVertical: 11, paddingHorizontal: 18, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.brown },
+  analysisBackText: { color: colors.brownDeep, fontWeight: "800" },
   errorBanner: {
     width: "100%",
     padding: 14,
@@ -1184,12 +1150,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 28,
     borderRadius: 8,
-    backgroundColor: "#6858e9",
+    backgroundColor: colors.brownDeep,
   },
   retryButtonDisabled: {
     opacity: 0.55,
   },
-  retryText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+  retryText: { color: colors.paper, fontWeight: "600", fontSize: 15 },
   guideBackdrop: {
     flex: 1,
     justifyContent: "flex-start",
@@ -1249,24 +1215,24 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalCard: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.glassStrong,
     borderRadius: 12,
     padding: 20,
   },
   modalTitle: {
     fontSize: 19,
     fontWeight: "700",
-    color: "#111",
+    color: colors.ink,
     marginBottom: 14,
   },
   modalInput: {
     borderWidth: 1.5,
-    borderColor: "#dedbf9",
+    borderColor: colors.line,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#222",
+    color: colors.ink,
   },
   modalActions: {
     flexDirection: "row",
@@ -1279,17 +1245,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   modalSecondaryText: {
-    color: "#6858e9",
+    color: colors.brown,
     fontWeight: "600",
   },
   modalPrimaryButton: {
-    backgroundColor: "#6858e9",
+    backgroundColor: colors.brownDeep,
     borderRadius: 8,
     paddingVertical: 11,
     paddingHorizontal: 18,
   },
   modalPrimaryText: {
-    color: "#fff",
+    color: colors.paper,
     fontWeight: "700",
   },
   popoverBackdrop: {

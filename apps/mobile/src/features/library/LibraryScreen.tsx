@@ -9,16 +9,13 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Book } from "../../types";
-import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useAuthStore } from "../../stores/authStore";
 import { fetchBooks } from "../../services/supabase/library";
-
-type LibraryNav = NativeStackNavigationProp<RootStackParamList, "Library">;
+import { colors } from "../../ui/theme";
 
 export default function LibraryScreen() {
-  const navigation = useNavigation<LibraryNav>();
+  const navigation = useNavigation<any>();
   const user = useAuthStore((state) => state.user);
   const [books, setBooks] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,7 +52,7 @@ export default function LibraryScreen() {
   if (isLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#6858e9" />
+        <ActivityIndicator size="large" color={colors.brown} />
         <Text style={styles.muted}>Loading saved books…</Text>
       </View>
     );
@@ -78,7 +75,7 @@ export default function LibraryScreen() {
       <View style={styles.centered}>
         <Text style={styles.title}>Library</Text>
         <Text style={styles.subtitle}>No saved notes yet. Capture a passage to get started.</Text>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate("Scan")}>
+        <TouchableOpacity style={styles.primaryButton} onPress={() => navigation.navigate("Capture")}>
           <Text style={styles.primaryButtonText}>Capture a passage</Text>
         </TouchableOpacity>
       </View>
@@ -130,23 +127,23 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 28,
-    backgroundColor: "#fff",
+    backgroundColor: colors.paper,
   },
-  list: { flex: 1, backgroundColor: "#fff" },
-  listContent: { padding: 20, paddingBottom: 36 },
+  list: { flex: 1, backgroundColor: colors.paper },
+  listContent: { padding: 20, paddingBottom: 112 },
   header: { marginBottom: 18 },
-  title: { fontSize: 30, fontWeight: "800", color: "#111", marginBottom: 8 },
-  subtitle: { fontSize: 15, color: "#666", lineHeight: 22, textAlign: "center" },
-  muted: { marginTop: 14, color: "#666", fontSize: 15 },
+  title: { fontSize: 30, fontWeight: "800", color: colors.ink, marginBottom: 8 },
+  subtitle: { fontSize: 15, color: colors.inkSoft, lineHeight: 22, textAlign: "center" },
+  muted: { marginTop: 14, color: colors.inkSoft, fontSize: 15 },
   errorText: { color: "#C62828", fontSize: 15, textAlign: "center", lineHeight: 22 },
   primaryButton: {
     marginTop: 24,
     paddingVertical: 13,
     paddingHorizontal: 24,
     borderRadius: 10,
-    backgroundColor: "#6858e9",
+    backgroundColor: colors.brownDeep,
   },
-  primaryButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  primaryButtonText: { color: colors.paper, fontWeight: "700", fontSize: 15 },
   bookRow: {
     minHeight: 74,
     flexDirection: "row",

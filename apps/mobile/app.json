@@ -15,7 +15,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.arsiakh.contextlens",
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Context Lens uses your local network in development to connect to the app running on your Mac."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -36,7 +39,8 @@
         {
           "cameraPermission": "Context Lens needs camera access to capture book pages for text extraction."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

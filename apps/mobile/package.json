@@ -12,6 +12,7 @@
     "test:highlight-guide": "tsx src/features/reader/highlightGuideStorage.test.ts",
     "test:sheet-gesture": "tsx src/features/reader/referenceSheetGesture.test.ts",
     "test:ocr": "tsx src/services/ocr/normalize.test.ts && tsx src/services/ocr/timeout.test.ts",
+    "test:camera-frame": "tsx src/features/scan/captureFrameLogic.test.ts",
     "test:save": "tsx src/services/supabase/saveNoteLogic.test.ts",
     "test:library": "tsx src/services/supabase/libraryLogic.test.ts",
     "test:latency": "tsx src/stores/latencyLogic.test.ts",
@@ -20,20 +21,24 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "11.5.2",
+    "@react-navigation/bottom-tabs": "^7.18.8",
     "@react-navigation/native": "^7.1.34",
     "@react-navigation/native-stack": "^7.14.6",
     "@supabase/supabase-js": "^2.106.2",
-    "expo": "~55.0.8",
-    "expo-blur": "~55.0.14",
-    "expo-camera": "~55.0.19",
-    "expo-image-picker": "~55.0.20",
-    "expo-secure-store": "~55.0.14",
-    "expo-status-bar": "~55.0.4",
+    "expo": "~55.0.28",
+    "expo-blur": "~55.0.16",
+    "expo-camera": "~55.0.21",
+    "expo-font": "~55.0.8",
+    "expo-image-manipulator": "~55.0.19",
+    "expo-image-picker": "~55.0.22",
+    "expo-secure-store": "~55.0.16",
+    "expo-status-bar": "~55.0.6",
     "expo-text-extractor": "^2.0.0",
     "react": "19.2.0",
-    "react-native": "0.83.2",
+    "react-native": "0.83.10",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
     "zustand": "^5.0.14"
@@ -44,5 +49,10 @@
     "tsx": "^4.22.4",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": "./modules"
+    }
+  }
 }
