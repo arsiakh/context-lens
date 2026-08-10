@@ -42,6 +42,7 @@ interface ScanState {
   confirmBookTitle: (title: string) => void;
   loadPreviewAnalysis: (response: AnalyzeResponse, author?: string) => void;
   analyze: () => Promise<void>;
+  resetCaptureView: () => void;
   reset: () => void;
 }
 
@@ -60,7 +61,15 @@ export const useScanStore = create<ScanState>((set, get) => ({
   confirmedBookTitle: null,
   needsBookTitleConfirmation: false,
 
-  setCaptured: (uri) => set({ status: "captured", imageUri: uri, ocrError: null }),
+  setCaptured: (uri) => set({
+    status: "captured",
+    imageUri: uri,
+    rawText: null,
+    normalizedText: null,
+    ocrError: null,
+    bookTitleHint: "",
+    authorHint: "",
+  }),
   setExtracting: () => set({ status: "extracting" }),
   setExtracted: (raw, normalized) =>
     set({ status: "extracted", rawText: raw, normalizedText: normalized }),
@@ -121,6 +130,16 @@ export const useScanStore = create<ScanState>((set, get) => ({
       set({ analyzeStatus: "error", analyzeError: err });
     }
   },
+
+  // Returns the Capture tab to its camera without discarding the request payload
+  // needed for retry, or the latest completed analysis shown in the Analysis tab.
+  resetCaptureView: () =>
+    set({
+      status: "idle",
+      imageUri: null,
+      rawText: null,
+      ocrError: null,
+    }),
 
   reset: () =>
     set({

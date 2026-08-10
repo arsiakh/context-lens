@@ -1,0 +1,7 @@
+{
+  "name": "context-lens-camera-roi",
+  "platforms": ["apple"],
+  "apple": {
+    "modules": ["ContextLensCameraRoiModule"]
+  }
+}

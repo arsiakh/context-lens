@@ -14,6 +14,7 @@ import {
   signInWithPassword,
   signUp,
 } from "../../services/supabase/authService";
+import { colors } from "../../ui/theme";
 
 type Mode = "password" | "magic";
 type PasswordView = "signIn" | "signUp";
@@ -215,35 +216,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 32,
-    backgroundColor: "#fff",
+    backgroundColor: colors.paper,
   },
   title: {
     fontSize: 32,
     fontWeight: "bold",
     marginBottom: 8,
-    color: "#111",
+    color: colors.ink,
   },
   subtitle: {
     fontSize: 16,
-    color: "#666",
+    color: colors.inkSoft,
     marginBottom: 32,
     textAlign: "center",
     lineHeight: 24,
   },
   emailHighlight: {
     fontWeight: "600",
-    color: "#333",
+    color: colors.ink,
   },
   hint: {
     fontSize: 14,
-    color: "#888",
+    color: colors.inkFaint,
     marginTop: 12,
     textAlign: "center",
   },
   linkText: {
     marginTop: 32,
     fontSize: 14,
-    color: "#6858e9",
+    color: colors.brown,
     textDecorationLine: "underline",
   },
   toggle: {
@@ -251,7 +252,7 @@ const styles = StyleSheet.create({
     width: "100%",
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: "#e0e0e0",
+    borderColor: colors.line,
     marginBottom: 20,
     overflow: "hidden",
   },
@@ -259,15 +260,15 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     alignItems: "center",
-    backgroundColor: "#fafafa",
+    backgroundColor: colors.glassStrong,
   },
   toggleActive: {
-    backgroundColor: "#6858e9",
+    backgroundColor: colors.brownDeep,
   },
   toggleText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#888",
+    color: colors.inkSoft,
   },
   toggleTextActive: {
     color: "#fff",
@@ -280,10 +281,10 @@ const styles = StyleSheet.create({
   },
   subToggleText: {
     fontSize: 14,
-    color: "#aaa",
+    color: colors.inkFaint,
   },
   subToggleActive: {
-    color: "#6858e9",
+    color: colors.brown,
     fontWeight: "600",
   },
   subToggleSep: {
@@ -293,12 +294,12 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 52,
     borderWidth: 1.5,
-    borderColor: "#ddd",
+    borderColor: colors.line,
     borderRadius: 10,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: "#111",
-    backgroundColor: "#fafafa",
+    color: colors.ink,
+    backgroundColor: colors.glassStrong,
   },
   inputSpaced: {
     marginTop: 12,
@@ -323,7 +324,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     width: "100%",
     height: 52,
-    backgroundColor: "#6858e9",
+    backgroundColor: colors.brownDeep,
     borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",

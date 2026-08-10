@@ -16,6 +16,8 @@ import type { RootStackParamList } from "../../navigation/RootNavigator";
 import { useAuthStore } from "../../stores/authStore";
 import { fetchNotesForBook } from "../../services/supabase/library";
 import { getNotePreview } from "../../services/supabase/libraryLogic";
+import { colors } from "../../ui/theme";
+import ScreenHeader from "../../ui/components/ScreenHeader";
 
 type BookDetailRoute = RouteProp<RootStackParamList, "BookDetail">;
 type BookDetailNav = NativeStackNavigationProp<RootStackParamList, "BookDetail">;
@@ -59,7 +61,8 @@ export default function BookDetailScreen() {
   if (isLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#6858e9" />
+        <View style={styles.stateHeader}><ScreenHeader title={route.params.title} onBack={() => navigation.goBack()} /></View>
+        <ActivityIndicator size="large" color={colors.brown} />
         <Text style={styles.muted}>Loading saved notes…</Text>
       </View>
     );
@@ -68,6 +71,7 @@ export default function BookDetailScreen() {
   if (error) {
     return (
       <View style={styles.centered}>
+        <View style={styles.stateHeader}><ScreenHeader title={route.params.title} onBack={() => navigation.goBack()} /></View>
         <Text style={styles.title}>{route.params.title}</Text>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.primaryButton} onPress={() => void loadNotes()}>
@@ -80,6 +84,7 @@ export default function BookDetailScreen() {
   if (notes.length === 0) {
     return (
       <View style={styles.centered}>
+        <View style={styles.stateHeader}><ScreenHeader title={route.params.title} onBack={() => navigation.goBack()} /></View>
         <Text style={styles.title}>{route.params.title}</Text>
         <Text style={styles.subtitle}>No saved notes for this book yet.</Text>
       </View>
@@ -95,7 +100,7 @@ export default function BookDetailScreen() {
       refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void loadNotes("refresh")} />}
       ListHeaderComponent={
         <View style={styles.header}>
-          <Text style={styles.title}>{route.params.title}</Text>
+          <ScreenHeader title={route.params.title} onBack={() => navigation.goBack()} />
           <Text style={styles.subtitle}>{notes.length} saved {notes.length === 1 ? "note" : "notes"}</Text>
         </View>
       }
@@ -103,7 +108,7 @@ export default function BookDetailScreen() {
         <TouchableOpacity
           accessibilityRole="button"
           style={styles.noteRow}
-          onPress={() => navigation.navigate("Reader", {
+          onPress={() => navigation.navigate("SavedReader", {
             savedNote: {
               noteId: item.id,
               bookId: item.bookId,
@@ -138,23 +143,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 28,
-    backgroundColor: "#fff",
+    backgroundColor: colors.paper,
   },
-  list: { flex: 1, backgroundColor: "#fff" },
+  stateHeader: { position: "absolute", top: 0, left: 0, right: 0 },
+  list: { flex: 1, backgroundColor: colors.paper },
   listContent: { padding: 20, paddingBottom: 36 },
   header: { marginBottom: 18 },
-  title: { fontSize: 28, fontWeight: "800", color: "#111", marginBottom: 8, textAlign: "center" },
-  subtitle: { fontSize: 15, color: "#666", lineHeight: 22, textAlign: "center" },
-  muted: { marginTop: 14, color: "#666", fontSize: 15 },
+  title: { fontSize: 28, fontWeight: "800", color: colors.ink, marginBottom: 8, textAlign: "center" },
+  subtitle: { fontSize: 15, color: colors.inkSoft, lineHeight: 22, textAlign: "center" },
+  muted: { marginTop: 14, color: colors.inkSoft, fontSize: 15 },
   errorText: { color: "#C62828", fontSize: 15, textAlign: "center", lineHeight: 22 },
   primaryButton: {
     marginTop: 24,
     paddingVertical: 13,
     paddingHorizontal: 24,
     borderRadius: 10,
-    backgroundColor: "#6858e9",
+    backgroundColor: colors.brownDeep,
   },
-  primaryButtonText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  primaryButtonText: { color: colors.paper, fontWeight: "700", fontSize: 15 },
   noteRow: {
     minHeight: 82,
     flexDirection: "row",
