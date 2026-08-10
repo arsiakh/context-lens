@@ -36,6 +36,7 @@ Thumbs.db
 
 # --- Editors (local/user-specific; keep shared snippets in-repo if you want) ---
 .idea/
+.cursor/
 
 # --- Test / coverage ---
 coverage/
