@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Context Lens",
+    "slug": "context-lens",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.arsiakh.contextlens",
-      "usesAppleSignIn": true,
+      "buildNumber": "1",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Context Lens uses your local network in development to connect to the app running on your Mac."
       }
