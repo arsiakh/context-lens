@@ -6,7 +6,7 @@ Pod::Spec.new do |s|
   s.homepage = 'https://github.com/arsiakhorramijam/context-lens'
   s.license = { :type => 'MIT' }
   s.authors = { 'Context Lens' => 'dev@contextlens.app' }
-  s.platforms = { :ios => '15.1' }
+  s.platforms = { :ios => '16.4' }
   s.swift_version = '5.9'
   s.static_framework = true
   s.source = { :git => 'https://github.com/arsiakhorramijam/context-lens.git', :tag => s.version.to_s }

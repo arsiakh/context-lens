@@ -1,13 +1,30 @@
 const { withPodfile } = require("expo/config-plugins");
 
 const MARKER = "Context Lens: normalize CocoaPods deployment targets for Xcode 27";
+const PROJECT_MARKER = "Context Lens: select the generated Xcode project explicitly";
 
 module.exports = function withPodDeploymentTarget(config, options = {}) {
-  const deploymentTarget = options.deploymentTarget ?? "15.1";
+  const deploymentTarget = options.deploymentTarget ?? "16.4";
+  const projectName = options.projectName;
 
   return withPodfile(config, (modConfig) => {
-    const podfile = modConfig.modResults.contents;
-    if (podfile.includes(MARKER)) return modConfig;
+    let podfile = modConfig.modResults.contents;
+
+    if (projectName && !podfile.includes(PROJECT_MARKER)) {
+      const targetDeclaration = `target '${projectName}' do`;
+      if (!podfile.includes(targetDeclaration)) {
+        throw new Error(`Unable to find the ${projectName} CocoaPods target.`);
+      }
+      podfile = podfile.replace(
+        targetDeclaration,
+        `# ${PROJECT_MARKER}. This prevents a stale Xcode workspace from making\n# CocoaPods project selection ambiguous.\nproject '${projectName}.xcodeproj'\n\n${targetDeclaration}`,
+      );
+    }
+
+    if (podfile.includes(MARKER)) {
+      modConfig.modResults.contents = podfile;
+      return modConfig;
+    }
 
     const closingBlocks = "\n  end\nend";
     const insertionPoint = podfile.lastIndexOf(closingBlocks);
