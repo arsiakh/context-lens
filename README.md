@@ -15,6 +15,7 @@ Context Lens photographs a book passage, extracts its text on-device, and adds v
 - Node.js 22
 - npm
 - Xcode 26 or newer for the current App Store toolchain
+- iOS 15.1 or newer on the target device
 - An iPhone with Developer Mode enabled for a local personal build
 - Supabase, OpenAI, Upstash, and Vercel projects
 
@@ -61,6 +62,8 @@ Before relying on an older manually configured project, compare its schema and p
 6. Complete the release smoke test in `docs/MVP_USER_VALIDATION_CHECKLIST.md`.
 
 Free Personal Team provisioning is temporary. Rebuild and reinstall when the profile expires. The Mac does not need to remain running after the native app has been installed; only a development build that is actively loading JavaScript from Metro needs the development server.
+
+The iOS configuration compiles React Native from source and normalizes CocoaPods deployment targets to iOS 15.1. These settings are intentional compatibility measures for Xcode 27; the first native build takes longer than subsequent builds.
 
 ## Deployment notes
 

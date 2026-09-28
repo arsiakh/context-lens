@@ -15,10 +15,12 @@ This checklist separates work that can be verified automatically from checks tha
 - [x] Run the entire mobile suite in continuous integration.
 - [x] Document setup, validation, database, device-installation, and deployment procedures.
 - [x] Record unresolved upstream dependency advisories without applying breaking forced fixes.
+- [x] Normalize every CocoaPods target to iOS 15.1 and compile React Native from source for Xcode 27 compatibility.
+- [x] Complete a native Xcode 27 simulator build, install, and launch smoke test.
 
 ## Required owner checks before starting the trial
 
-- [ ] Review and accept the Xcode licence in Xcode (or run `sudo xcodebuild -license` and review it) so CocoaPods can run.
+- [x] Review and accept the Xcode licence in Xcode (or run `sudo xcodebuild -license` and review it) so CocoaPods can run.
 - [ ] Apply all Supabase migrations and inspect the live project for older permissive policies.
 - [ ] Confirm the deployed backend `/api/health` endpoint returns HTTP 200.
 - [ ] Build and install the current branch on the intended iPhone.
