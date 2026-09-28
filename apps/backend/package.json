@@ -4,9 +4,13 @@
   "private": true,
   "scripts": {
     "serve": "vercel dev",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "typecheck": "tsc --noEmit",
+    "test": "ts-node tests/validateSchema.ts && ts-node tests/validateRanges.test.ts && ts-node tests/validateAnalyzeInput.test.ts",
+    "validate": "npm run typecheck && npm test"
   },
   "devDependencies": {
+    "@vercel/node": "^5.6.21",
     "@types/node": "^22.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.0"
@@ -15,7 +19,6 @@
     "@supabase/supabase-js": "^2.108.1",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
-    "@vercel/node": "^5.6.21",
     "openai": "^6.42.0",
     "zod": "^4.3.6"
   }

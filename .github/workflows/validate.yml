@@ -28,17 +28,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check
-        run: npx tsc --noEmit
-
-      - name: Validate analyze schema
-        run: npx ts-node tests/validateSchema.ts
-
-      - name: Validate range cleanup
-        run: test ! -f tests/validateRanges.test.ts || npx ts-node tests/validateRanges.test.ts
-
-      - name: Validate analyze input
-        run: test ! -f tests/validateAnalyzeInput.test.ts || npx ts-node tests/validateAnalyzeInput.test.ts
+      - name: Validate backend
+        run: npm run validate
 
   mobile:
     name: Mobile
@@ -61,8 +52,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check
-        run: npx tsc --noEmit
+      - name: Validate mobile app
+        run: npm run validate
 
-      - name: Test reader annotation rendering
-        run: npm run test:reader
+  prototype:
+    name: Prototype
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: prototype
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: prototype/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate prototype
+        run: npm run validate
