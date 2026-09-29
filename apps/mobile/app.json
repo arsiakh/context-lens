@@ -45,15 +45,17 @@
         "expo-build-properties",
         {
           "ios": {
-            "deploymentTarget": "15.1",
-            "buildReactNativeFromSource": true
+            "deploymentTarget": "16.4",
+            "buildReactNativeFromSource": true,
+            "enableSceneSupport": true
           }
         }
       ],
       [
         "./plugins/with-pod-deployment-target",
         {
-          "deploymentTarget": "15.1"
+          "deploymentTarget": "16.4",
+          "projectName": "ContextLens"
         }
       ]
     ]
